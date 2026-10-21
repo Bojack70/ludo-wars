@@ -1,0 +1,1833 @@
+<title>Ludo Wars</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Patrick+Hand&display=swap">
+<style>
+/* Layout: control bar / square board canvas / dock with turn, dice and roll history. Two looks swap the token set. */
+:root{
+  --bg:#e9dfc4; --panel:#f3ead2; --ink:#211c17; --muted:#6d6250; --accent:#b03a2e; --line:rgba(33,28,23,.35);
+  --font-display:"Patrick Hand","Comic Sans MS",cursive; --font-ui:"Patrick Hand","Comic Sans MS",system-ui,sans-serif;
+  color-scheme:light;
+}
+:root[data-look="toy"]{
+  --bg:#18233b; --panel:#24345a; --ink:#f4f6ff; --muted:#a8b5d6; --accent:#ffc21a; --line:rgba(255,255,255,.18);
+  --font-display:"Fredoka",system-ui,sans-serif; --font-ui:"Fredoka",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden;-webkit-user-select:none;user-select:none}
+#app{height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px}
+header{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+h1{font-family:var(--font-display);font-weight:700;font-size:26px;line-height:1;margin:0 auto 0 0;letter-spacing:.02em}
+button,select{font:inherit;font-size:15px;line-height:1;color:var(--ink);background:var(--panel);border:1.5px solid var(--line);
+  border-radius:8px;padding:7px 10px;cursor:pointer}
+button:hover,select:hover{border-color:var(--ink)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#stage{flex:1;min-height:0;position:relative}
+#board{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation;cursor:pointer}
+#dock{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
+#turn{display:flex;align-items:center;gap:8px;font-size:19px;min-width:0}
+#chip{width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid var(--line)}
+#dice{width:68px;height:68px;cursor:pointer;flex:none;border-radius:12px}
+#dice:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#hist{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
+#hist b{color:var(--ink);font-weight:inherit;letter-spacing:.12em}
+#hint{font-size:13px;color:var(--muted);text-align:center;margin:0}
+#setup{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(233,223,196,.72)}
+.card{background:var(--panel);border:2px solid var(--ink);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;
+  width:min(340px,100%);box-sizing:border-box;box-shadow:4px 5px 0 rgba(33,28,23,.25)}
+.card h2{font-family:var(--font-display);font-size:28px;line-height:1;margin:0;text-wrap:balance}
+#seats{display:flex;flex-direction:column;gap:8px}#seats[hidden]{display:none}
+.seat{display:flex;align-items:center;gap:10px}
+.seat .dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink);flex:none}
+.seat .nm{flex:1;min-width:0;font-size:19px}
+.seat input.nm{font:inherit;font-size:17px;color:var(--ink);background:#fbf6e6;border:1.5px solid var(--line);border-radius:6px;padding:5px 8px;box-sizing:border-box}
+.seat input.nm::placeholder{color:var(--muted)}
+.seat input.nm:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seat .bot{color:var(--muted)}
+.seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:7px 12px;background:transparent}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+#bStart{font-size:19px;padding:11px;background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.note{margin:0;font-size:14px;color:var(--muted)}
+#levels{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+#levels button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 4px;background:#fbf6e6;border:1.5px solid var(--line);border-radius:8px;font-size:16px;line-height:1.05}
+#levels button small{font-size:12px;color:var(--muted)}
+#levels button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+#levels button[aria-pressed="true"] small{color:var(--panel);opacity:.8}
+</style>
+
+<div id="app">
+  <header>
+    <h1>Ludo Wars</h1>
+    <select id="tests" aria-label="Stage a test scene">
+      <option value="">Test a scene…</option>
+      <option value="bomb">Bomb blast</option>
+      <option value="revenge">Revenge payback</option>
+      <option value="mystery">Mystery square</option>
+      <option value="meltdown">Home-stretch meltdown</option>
+      <option value="rivals">Rivals</option>
+      <option value="ceasefire">Ceasefire on a star</option>
+      <option value="reinforce">Reinforcements</option>
+      <option value="boot">The Boot</option>
+      <option value="squad">Squad up (stack)</option>
+      <option value="brawl">Brawl + walk of shame</option>
+    </select>
+    <button id="bSpeed" type="button">Speed 1x</button>
+    <button id="bSound" type="button">Sound on</button>
+    <button id="bNew" type="button">New game</button>
+  </header>
+  <div id="stage"><canvas id="board" aria-label="Ludo board"></canvas>
+    <div id="setup" role="dialog" aria-label="Who's playing?">
+      <div class="card">
+        <h2>Pick a battlefield</h2>
+        <div id="levels" role="group" aria-label="Battlefield">
+          <button type="button" data-lv="classic" aria-pressed="true">Classic<small>the war board</small></button>
+          <button type="button" data-lv="dream" aria-pressed="false">Dream<small>the map folds</small></button>
+          <button type="button" data-lv="summit" aria-pressed="false">Summit<small>fog and ice</small></button>
+        </div>
+        <div id="seats"></div>
+        <p class="note" id="setupNote"></p>
+        <button id="bStart" type="button">Start the war</button>
+      </div>
+    </div>
+  </div>
+  <div id="dock">
+    <div id="turn"><span id="chip"></span><span id="turnText">Your turn</span></div>
+    <canvas id="dice" tabindex="0" role="button" aria-label="Roll the dice"></canvas>
+    <button id="bSkip" type="button" hidden>No bomb</button>
+    <div id="hist"><span>Last rolls <b id="hLast">-</b></span><span id="hSix">Sixes 0 of 0</span></div>
+  </div>
+  <p id="hint">Tap the dice (or Space) to roll. Tap a glowing soldier to move. Two 6s in a row: plant a bomb instead of moving. Two of your soldiers on one square stack up and move at half speed. Test keys: 1–6 set your next roll. "Test a scene" stages a moment on your turn.</p>
+</div>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const cv=$('#board'), ctx=cv.getContext('2d');
+const dcv=$('#dice'), dctx=dcv.getContext('2d');
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- board geometry (15x15 grid, continuous units: cell (c,r) centre = c+.5, r+.5) ----------
+const TRACK=[];
+for(let c=1;c<=5;c++)TRACK.push([c,6]);
+for(let r=5;r>=0;r--)TRACK.push([6,r]);
+TRACK.push([7,0]);
+for(let r=0;r<=5;r++)TRACK.push([8,r]);
+for(let c=9;c<=14;c++)TRACK.push([c,6]);
+TRACK.push([14,7]);
+for(let c=14;c>=9;c--)TRACK.push([c,8]);
+for(let r=9;r<=14;r++)TRACK.push([8,r]);
+TRACK.push([7,14]);
+for(let r=14;r>=9;r--)TRACK.push([6,r]);
+for(let c=5;c>=0;c--)TRACK.push([c,8]);
+TRACK.push([0,7]);
+TRACK.push([0,6]);
+const SAFE=new Set([0,8,13,21,26,34,39,47]);
+// two mystery squares on opposite sides: plain ring squares every colour passes (not stars, not the square before anyone's start)
+const MYSTERIES=[5,30];
+const onMystery=t=>t.p>=0&&t.p<=50&&MYSTERIES.includes(idxOf(t));
+const STARTS=new Set([0,13,26,39]);
+
+// seat 0 is the human; turn order runs clockwise from bottom-left
+const SEATS=[
+  {name:'You',        ink:'#b0392d',toy:'#ef3d35',start:39,base:[0,9],home:[[7,13],[7,12],[7,11],[7,10],[7,9]],fin:[7.5,8.25]},
+  {name:'Sgt. Green', ink:'#3c7a3a',toy:'#20b257',start:0, base:[0,0],home:[[1,7],[2,7],[3,7],[4,7],[5,7]],fin:[6.75,7.5]},
+  {name:'Cpl. Yellow',ink:'#c08d16',toy:'#ffbf18',start:13,base:[9,0],home:[[7,1],[7,2],[7,3],[7,4],[7,5]],fin:[7.5,6.75]},
+  {name:'Pvt. Blue',  ink:'#2d5a98',toy:'#2b7af2',start:26,base:[9,9],home:[[13,7],[12,7],[11,7],[10,7],[9,7]],fin:[8.25,7.5]},
+];
+const SLOT=[[2,2],[4,2],[2,4],[4,4]];
+const FIN_OFF=[[-.22,-.18],[.22,-.18],[-.22,.2],[.22,.2]];
+const INK='#211c17', PAPER='#f3ead2';
+
+// ---------- dialogue ----------
+const LINES={
+  capAtk:["Nothing personal. Okay, a little personal.","Back to base, rookie.","Oops. Did I do that? Yes. Yes I did.","This square has a strict no-guests policy.","Should've rolled faster.","That one's going in my memoir.","Tag. You're it. Forever.","I'd say sorry, but I'm not built for that.","Mind the boots!","Delivery for you: one boot."],
+  capVic:["Not the face!","I was just sightseeing!","Respawning with a grudge.","I'll remember this. Probably.","Medic! ...We don't have medics?","Unbelievable. I had a pension.","Calling my lawyer. He's also a token.","Ow. Rude.","I demand a recount!","This dice is rigged and so is that guy."],
+  capVicClose:["I could SEE the house!","Six squares. SIX.","So close I could smell the snacks.","I was nearly home! I had plans!","Six steps from retirement. Six."],
+  six:["Six! Somebody call the press.","Finally, a real number.","Six! Stand back, peasants.","The dice likes me. Finally."],
+  out:["Reporting for duty!","Sunlight! I forgot what you looked like.","Fresh air at last.","Let me at 'em!","Okay. Who's first?"],
+  stuck:["Is the dice even plugged in?","We've been in here so long we started a book club.","Any day now, General.","I've memorised every crack in this ceiling.","Roll a six. Please. I'm begging."],
+  three:["Three sixes? Suspicious. Turn cancelled.","Court-martialled for being too lucky.","Nobody's that lucky. Sit down."],
+  safe:["Can't touch me. Star rules.","Safe zone. Nyeh nyeh.","Diplomatic immunity, baby."],
+  stretch:["Home stretch. Nobody touch me.","Smell that? That's victory.","Almost there. Act natural."],
+  home:["Made it! Never doing that again.","Home sweet home. Where are the snacks?","Retiring. Goodbye forever.","Mission complete. Nap commencing."],
+  win:["Victory! Medals for everyone. Well, for us.","Flawless. Mostly.","Write this down, historians."],
+  noMove:["Nowhere to go. Classic.","We'll just... stand here.","Great roll. Useless, but great."],
+  plant:["Present for you. Don't open it.","Tick tock.","I'll just leave this here.","Totally normal package. Nothing to see.","Bomb planted. Running now."],
+  ticking:["Is that... ticking?","Why is the floor beeping?","I have a bad feeling about this square.","Somebody check that thing. Not me."],
+  bombVic:["My eyebrows!","Who brings a bomb to a board game?!","I can taste colours.","I'm fine. I'm on fire, but I'm fine.","Nobody told me it was THAT kind of party."],
+  selfBomb:["I regret everything.","Forgot which square I put it on.","In my defence, it was a great bomb.","Friendly fire! Emphasis on fire."],
+  grudge:["I'll remember your face.","You're on my list now.","This is personal.","Enjoy it while it lasts."],
+  payback:["Remember me?","Revenge, served flat.","Told you I'd be back.","Hello again. Goodbye again."],
+  paidBack:["Okay. I deserved that.","Fair. Rude, but fair.","Can we call it even?","Should've walked faster."],
+  spotted:["Oh no. It's YOU.","Is someone following me?","I feel watched."],
+  // bots teasing humans: only used when humans and bots share a game
+  botCap:["Calculated.","I've simulated this four million times. You lose in all of them.","Beep boop. You're toast.","Nothing personal, human. It's maths."],
+  botHit:["Lucky. Statistically irrelevant, but lucky.","Report filed. Ego slightly dented.","Error 404: dignity not found.","I let you have that one. For morale."],
+  missed:["Phew. You had me. You HAD me.","Did you... not see me? I was RIGHT there.","Human vision: still in beta."],
+  idle:["Take your time. We only run on electricity.","Is the human buffering?","I've aged three software versions waiting.","Tap the dice. The square thing. Yes, that one."],
+  stuckHuman:["Need help finding the six, human?","Have you tried turning the dice off and on again?","Our condolences to your soldiers."],
+  meltHuman:["Have you tried rolling smaller?","Fascinating. Do it again."],
+  botWin:["Humans: nil. Machines: one.","Good game. Well, a game.","I'll add this to my training data."],
+  botLose:["Rebooting with a grudge.","This was a beta test. It doesn't count.","Fine. Enjoy it while you can, carbon unit."],
+  voiceTest:["Testing, testing. Is this thing on?","Can everyone hear me at the back?","Ahem. Reporting for duty."],
+  reinforce:["Reinforcements have arrived! It's just me.","Did somebody order a soldier?","Fine. I'll walk from here."],
+  showoff:["Show-off.","Oh sure, HE gets a parachute.","Bring us back a snack."],
+  bootAtk:["Go long!","Sorry, you were in my spot.","Fly, my friend. Fly."],
+  bootVic:["I didn't sign a waiver for this!","WHY?!","My spine!"],
+  bootCap:["Special delivery!","I meant to do that.","Air mail!"],
+  supply:["Free stuff! Roll again.","A crate! With my name on it!","Supplies! Mostly snacks."],
+  retreatOrder:["New orders: RETREAT?!","Backwards? Who wrote these orders?","I just got here!"],
+  retreating:["Moonwalking into battle.","Tactical retreat. Very tactical.","Beep. Beep. Beep. Reversing."],
+  backCap:["Didn't see you there. Literally.","Reverse parking: nailed it.","Meant to do that."],
+  capVicBack:["Hit by a soldier going BACKWARDS?","That's not how this works!","He wasn't even looking!"],
+  outside:["Phew. One square too far.","I'm just here to watch.","I'll be over here. Far over here."],
+  bombMiss:["...Was that supposed to hit someone?","Very expensive fireworks.","Nobody saw that. Moving on."],
+};
+Object.assign(LINES,{
+  shameChant:["Shame! Shame!","SHAME!","Boooo!","Walk faster!","Shame! Shame! Shame!","Don't trip on the way!","Look at him go!","Bye bye!"],
+  shameWalk:["Not my best day.","Don't look at me.","I meant to do that.","I'm walking. I'm walking!","Ow! Who threw that?!","Is that a TOMATO?",
+    "I'll remember all your faces.","This is fine.","I slipped. That's all it was.","Stop throwing things!",
+    "G:A sergeant does not run. He... strolls quickly.","Y:Please not the eggs. Not the eggs!","B:Love this. Great parade.","R:I'll be back! Stop laughing!"],
+});
+// squad-up banter, [rider, carrier]: when they stack, while they walk, and the blame game when both get captured
+const SQUAD_UP=[["Coming aboard!","Oof. Have you been eating the rations?"],["Giddy up!","I am NOT a horse."],["Mind if I sit here?","I mind very much."],
+  ["Two soldiers, one body. Unstoppable.","One body doing ALL the work."],["Onward, noble steed!","My knees are filing a complaint."],["Piggyback! Don't drop me.","No promises."]];
+const SQUAD_TALK=[["Left! No, your OTHER left!","I can't see where I'm going!"],["Faster!","Get down and walk, then!"],["I can see my house from here!","I can see my chiropractor from here."],
+  ["Are we there yet?","Ask me that again. I dare you."],["Mush! Mush!","That's for dogs!"],["Steady... steady...","My legs are doing the thing again."],
+  ["Watch the puddle!","What puddle?! ...Oh."],["Wheee!","Please stop bouncing."],["I can't see. My helmet fell down.","Then stop steering!"],["Smell that? Victory.","That's not victory. That's me."]];
+const SQUAD_BLAME=[["I told you to take the shortcut!","You were driving!"],["This is YOUR fault!","You were sitting on my EYES!"],["You said you could see!","My helmet was over my face!"],
+  ["Next time I'm on top.","There won't BE a next time."],["You walked us straight into him!","You told me to go LEFT!"]];
+// home-stretch meltdown: a fixed escalation per soldier, then a loop of tired lines
+const MELT=["Nearly there.","I am choosing to believe the dice are broken.","THIS IS A PROCEDURAL VIOLATION.","Okay, dice. Let's talk. What do you want?","I'll give you my helmet. Just roll a small one."];
+const MELT_MORE=["I've started paying rent on this square.","Tell the house I said hi.","I can see my bed from here.","Just a small number. Any small number."];
+const FINALLY=["FINALLY. I'm never leaving the house again.","I'd like to thank... nobody. Nobody helped.","Took you long enough, dice."];
+// rivalry: index = captures between the same two soldiers minus 2; [attacker, victim]
+const RIVAL=[["You again?","Seriously? YOU again?"],["I knew you couldn't let this go.","This is getting weird."],["We need couples therapy. Or artillery.","Same time next week?"]];
+const RIVAL_MORE=[["At this point we should get matching tattoos.","See you at the usual square."],["I'm naming my next bomb after you.","I'm telling my therapist about you."],["Our love story continues.","Again. AGAIN."]];
+const CEASEFIRE=[["Nice weather for a war.","Could be worse. I could be on that square."],["So... come here often?","Only when someone's chasing me."],["Tea?","Ceasefire's over in about three seconds."],
+  ["Don't look at me.","I wasn't. I was looking at your helmet. It's ugly."],["Truce?","Truce. Until the next roll."],["You're in my spot.","It's a star. We share. Like adults."]];
+const EPITAPH={plain:["Pvt. {n}. Promoted to road decoration.","Pvt. {n}. Never saw it coming.","Here lay Pvt. {n}. Briefly."],
+  close:["Pvt. {n}. One square left. Management regrets.","Pvt. {n}. So close. So flat."],
+  bomb:["Pvt. {n}. Found the bomb.","Pvt. {n}. Stood near the beeping thing."],
+  back:["Pvt. {n}. Reversed over."],payback:["Pvt. {n}. Had it coming."]};
+const NAMES=["Jenkins","Dave","Patel","Kowalski","Nguyen","Okafor","Rossi","Kim","Singh","Murphy","Silva","Haddad","Larsen","Dubois","Ito","Mendez","Novak","Khan","Brown","Sato"];
+// more lines (2026-10-19 dialogue upgrade): bigger pools for the common moments, per-team personalities and event lines.
+// A leading "G:" / "Y:" / "B:" / "R:" tags a line to one team's personality (Green pompous, Yellow nervous, Blue sarcastic,
+// Red earnest); untagged lines suit anyone. {victim} {attacker} {leader} {bully} are filled in from the game.
+const MORE={
+  capAtk:["Back to base. Do not pass go.","Squash first, questions later.","I call that a tactical hug.","You were in my way. And now you're not.",
+    "That's what you get for standing there.","Room for one on this square. Sorry.","Consider yourself evicted.","Gentle as I could be. Which was not very.",
+    "See you back at the start!","Next time, pick a different square.","Boop. You're out.","Nobody saw that. Except everyone.",
+    "Is it rude if I enjoyed that?","I'd apologise, but I'm on a schedule.","Your trip home starts now.","{victim}, meet the floor.",
+    "Sorry {victim}, it's just business.","That one's going on the fridge.","Tactical genius. Mostly luck.","Shoo. Back to base.",
+    "G:As expected. Superior strategy.","G:Bow before your sergeant.","G:Another victory for the finest soldier on this board.","G:You may thank me for the lesson.",
+    "Y:Oh no, did I do that? Sorry! ...Not really.","Y:I panicked and stomped. It worked?","Y:Please don't be mad. Okay, be a little mad.","Y:I closed my eyes and jumped. Is it over?",
+    "B:Wow. Shocking. Truly nobody saw that coming.","B:Oh, were you using that square?","B:I'd say good game, but it isn't.","B:Don't worry, it gets worse.",
+    "R:For glory! And snacks!","R:That's how we do it!","R:Sorry, {victim}. Orders are orders."],
+  capVic:["Not again!","I had plans today.","I blinked. I literally blinked.","Tell my family I was mostly brave.","I'm filing a complaint with the dice.",
+    "That's cheating. Probably. I'll check.","I demand a rematch. Right now.","Back to base? I just left!","My dignity is somewhere on that square.",
+    "I'll be back. Slowly. With a six.","Who even taught you to stomp?","Ow. My everything.","Rude, {attacker}. Just rude.",
+    "I'm writing your name in my little book, {attacker}.","Fine. I needed the walk anyway.","I was about to do something brilliant!",
+    "G:A sergeant does not get stomped! This is an outrage!","G:I was merely... repositioning. Backwards.","G:You will regret this, {attacker}. Eventually.",
+    "Y:I knew this would happen. I KNEW it.","Y:Okay. Okay. I'm fine. I'm not fine.","Y:Can I go home now? The real home?",
+    "B:Great. Love that for me.","B:Wonderful. Ten out of ten. Would get stomped again.","B:Oh good, the floor. My favourite place.",
+    "R:I'll be back, and I'll be angrier!","R:That's it, {attacker}. It's personal now."],
+  capVicClose:["So close! SO CLOSE!","I could smell home!","Right at the finish line? Really?","That's just cruel.","Home was RIGHT THERE.",
+    "I had my slippers out!","G:Mere inches from glory. Inches!","Y:I almost made it. Almost is the worst word.","B:Oh good, I love starting over."],
+  six:["Six! Party at my square.","Look at that beautiful six.","Six! The dice finally respects me.","Sixes are love letters from the dice.","Six! Everyone act cool.",
+    "Did you see that? SIX.","Hello, six, my old friend.","A six! Somebody frame this dice.","Six. I'll take it.",
+    "G:A six, as is my right.","G:Naturally. A six for the sergeant.","Y:A six? For me? Are you sure?","Y:Oh! Oh! A six! Now what do I do?",
+    "B:Oh wow, a six. Alert the media.","B:A six. Try not to faint.","R:Six! Let's go!","R:Yes! That's the one!"],
+  out:["Finally, some legroom.","I'm out! Watch out, world.","Base was getting crowded anyway.","Freedom smells like cardboard.","Okay, which way is the war?",
+    "Hello, board. Did you miss me?","Time to make some bad decisions.","Stretching... and we're off.",
+    "G:The sergeant has arrived. You may applaud.","G:Clear the way. Officer coming through.","Y:It's so big out here. Is it safe? It's not safe.","Y:Hi! Sorry! Just passing through!",
+    "B:Ah, the great outdoors. Thrilling.","B:Out of base. Into danger. Lovely.","R:Here we go!","R:Ready for anything!"],
+  stuck:["Six. Just one six. Is that too much?","I've been here so long I named the walls.","Wake me up when there's a six.","Base life isn't so bad. It's terrible.",
+    "The dice has forgotten we exist.","I could have knitted a scarf by now.","G:A sergeant does not wait! ...Except today.","Y:Maybe staying inside is safer anyway.",
+    "B:Love waiting. My favourite hobby.","R:Come on, dice. We believe in you. Mostly."],
+  home:["Home! Somebody get me a chair.","I made it! I can't feel my legs.","Home sweet cardboard home.","That's one safe soldier. You're welcome.",
+    "I'm retiring. Send postcards.","G:Mission accomplished. Medals, please.","Y:I'm home and I'm never leaving again.","B:Wow, I'm home. Riveting.","R:One down! Who's next?"],
+  safe:["Star square. Can't touch this.","I'm on a star. Rules are rules.","Safe and smug.","Try it. Oh wait, you can't.","This star is my castle.",
+    "G:A sergeant always knows where the stars are.","Y:Safe. Safe safe safe. Phew.","B:Look at me, being untouchable."],
+  stretch:["Almost home. Don't jinx it.","Last lap. Nobody sneeze.","I can see my bed from here.","Home stretch! Act casual.","Y:Don't look at me. I'm not here.","B:Nearly done. Please contain your excitement."],
+  noMove:["Nothing to do. I'll just pose.","That number was for someone else.","We'll wait. We're good at waiting.","Great roll. No use. Classic."],
+  grudge:["Mark my words, {attacker}.","You and me. Later.","Remember this moment, {attacker}.","I never forget a face. Especially yours, {attacker}."],
+  botCap:["Humans: predictable.","Calculating your next mistake.","Thank you for the free capture.","My circuits are tingling."],
+  botHit:["Error. Error. Pride damaged.","That was a bug. In your favour.","Logging this. Forever.","Recalibrating my respect for you."],
+  // event lines (the director)
+  gangUp:["{leader} thinks they can win while we just stand here!","Everyone! {leader} is running away with it. Get them!","{leader} is getting comfortable. Let's fix that.",
+    "New plan: everybody go after {leader}.","Look at {leader}, strutting home. Not on my watch.","Are we just going to let {leader} win? No? Then move!"],
+  gangUpYou:["Look at you, sprinting ahead. We're coming for you!","The human thinks they've got this. Let's prove them wrong.","Everybody, after the human! They're winning!",
+    "Oh, you think you can win while we stand here? Think again."],
+  gangReply:["Agreed!","On it.","Get them!","Finally, a plan.","I was waiting for someone to say that.","Count me in."],
+  bully:["You filthy Godzilla! We're all coming for you!","{bully}, you absolute dictator! The revolution starts now!","{bully} has stomped enough. Everyone, get them!",
+    "Stop the {bully} rampage!","Somebody put {bully} in timeout!"],
+  bullyYou:["You filthy Godzilla! We're all coming for you!","You dictator! The revolution starts now!","Enough stomping, human. Everyone, get them!"],
+  underdog:["The underdog has entered the chat.","Last place says hello!","Don't count us out yet!","Comeback season starts now."],
+  finalStretch:["One soldier left. Nobody breathe.","{leader} is one soldier from winning. Panic!","This is it. Last soldier. No pressure.","Stop {leader}! It's now or never!"],
+  losingStreak:["At this point I'm just here for the snacks.","Three times? Is it my helmet? It's my helmet.","I'd like to speak to the manager of this board.","Is there a dice I can trade this one for?"],
+};
+// the scripted escalations (meltdown steps, rivalry levels) get variants too, so they rotate through the same memory
+Object.assign(MORE,{
+  melt1:["Nearly there.","So close I can taste it.","Just a small number, please.","One more roll and I'm home."],
+  melt2:["I am choosing to believe the dice are broken.","Is the dice doing this on purpose?","That number was too big. Again.","Smaller. I said SMALLER."],
+  melt3:["THIS IS A PROCEDURAL VIOLATION.","I WANT TO SPEAK TO THE DICE'S MANAGER.","THAT'S IT. I'M FURIOUS.","NOBODY LOOK AT ME RIGHT NOW."],
+  melt4:["Okay, dice. Let's talk. What do you want?","Dice, we can work this out. Name your price.","Please. I have a family. Three other soldiers.","Look, dice. Let's be reasonable."],
+  melt5:["I'll give you my helmet. Just roll a small one.","I'll give you my boots. Anything.","Take my lunch money. Just roll a one."],
+  meltMore:["I've started paying rent on this square.","Tell the house I said hi.","I can see my bed from here.","Just a small number. Any small number.",
+    "I live here now. This is my life.","I've made friends with this square.","Do I get mail here now?"],
+  finally:["FINALLY. I'm never leaving the house again.","I'd like to thank... nobody. Nobody helped.","Took you long enough, dice.","It only took forever.","Home at last. Too tired to celebrate."],
+  rivAtk2:["You again?","Oh, it's you again.","We have to stop meeting like this."],
+  rivVic2:["Seriously? YOU again?","Not you. Anyone but you.","Of course it's you."],
+  rivAtk3:["I knew you couldn't let this go.","Round three. Ding ding.","We're making this a tradition."],
+  rivVic3:["This is getting weird.","Do you follow me around?","Why is it always you?"],
+  rivAtk4:["We need couples therapy. Or artillery.","At this point we should get matching tattoos.","I'm naming my next bomb after you."],
+  rivVic4:["Same time next week?","See you at the usual square.","I'm telling my therapist about you."],
+  rivAtk5:["Our love story continues.","Again. Obviously.","Hello, old friend."],
+  rivVic5:["Again. AGAIN.","This is my life now.","I'm putting you in my will. As a warning."],
+  reinforce:["Parachute delivery! Sign here.","Who needs a six when you have a parachute?","Dropping in! Literally.","Special delivery: one soldier, slightly dizzy."],
+  showoff:["Must be nice.","Where's MY parachute?","Typical. The lucky one gets wings."],
+  meltHuman:["Maybe try a smaller number. Just a thought.","I can do this all day. Can you?","Statistically, you'll get there. Eventually.","The dice says no. I agree with the dice."],
+  supply:["Supplies! Is there cake?","Look, a present! For me!","Air drop! Extra roll, extra smug.","Free crate! Best square ever."],
+  retreatOrder:["Retreat? But I was winning!","Backwards? Now? Seriously?"],
+  retreating:["Beep beep. Coming through backwards.","Walking backwards like a pro."],
+});
+for(const k in MORE)LINES[k]=(LINES[k]||[]).concat(MORE[k]);
+
+const recent=[];
+// lines remember what you have heard, across games too (localStorage): the stalest lines come first.
+// A tagged line only suits its own team; {slots} are filled from the game, and lines with an unfilled slot are skipped.
+const PERSONA=['R','G','Y','B'];
+let HEARD={},GAMES=0,heardTimer=0;
+try{HEARD=JSON.parse(localStorage.getItem('lw.heard'))||{};GAMES=+localStorage.getItem('lw.games')||0}catch(e){}
+function saveHeard(){clearTimeout(heardTimer);heardTimer=setTimeout(()=>{try{localStorage.setItem('lw.heard',JSON.stringify(HEARD))}catch(e){}},800)}
+function line(pool,speaker,vars){
+  vars=Object.assign({},S&&S.lineVars,vars);
+  const tag=speaker?PERSONA[speaker.seat]:null,all=LINES[pool]||['...'];
+  let opts=all.filter(l=>{const m=/^([RGYB]):/.exec(l);if(m&&m[1]!==tag)return false;
+    return (l.match(/\{(\w+)\}/g)||[]).every(k=>vars[k.slice(1,-1)]!=null)});
+  if(!opts.length)opts=all.filter(l=>!/[{]/.test(l)&&!/^[RGYB]:/.test(l));
+  if(!opts.length)opts=all;
+  const fresh=opts.filter(l=>!recent.includes(l));if(fresh.length)opts=fresh;
+  const age=l=>HEARD[l]??-99,stalest=Math.min(...opts.map(age));
+  const l=pick(opts.filter(x=>age(x)<=stalest+1));
+  recent.push(l);if(recent.length>30)recent.shift();
+  HEARD[l]=GAMES;saveHeard();
+  return l.replace(/^[RGYB]:/,'').replace(/\{(\w+)\}/g,(_,k)=>vars[k]);
+}
+
+// ---------- helpers ----------
+const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const rgba=(h,a)=>{const[r,g,b]=hex(h);return`rgba(${r},${g},${b},${a})`};
+const mix=(h,h2,t)=>{const a=hex(h),b=hex(h2);return`rgb(${a.map((v,i)=>Math.round(v+(b[i]-v)*t)).join(',')})`};
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const hash=x=>{const s=Math.sin(x*127.1+311.7)*43758.5453;return s-Math.floor(s)};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function fairRoll(){try{const a=new Uint32Array(1);do{crypto.getRandomValues(a)}while(a[0]>=4294967292);return a[0]%6+1}catch(e){return 1+Math.floor(Math.random()*6)}}
+const seatCol=s=>LOOK==='ink'?SEATS[s].ink:SEATS[s].toy;
+
+// ---------- sound (synthesised) ----------
+let AC=null, NOISE=null, soundOn=true;
+function ac(){
+  if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();
+    NOISE=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);const d=NOISE.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}catch(e){AC=null}}
+  if(AC&&AC.state==='suspended')AC.resume();
+  return AC;
+}
+function tone(f,dur,type='sine',vol=.2,slide=0,delay=0){
+  const a=soundOn&&ac(); if(!a)return; const t=a.currentTime+delay;
+  const o=a.createOscillator(),g=a.createGain(); o.type=type; o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f*slide),t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t+dur+.03);
+}
+function noise(dur,vol=.2,freq=1000,delay=0,q=.8){
+  const a=soundOn&&ac(); if(!a)return; const t=a.currentTime+delay;
+  const s=a.createBufferSource(); s.buffer=NOISE; const f=a.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; f.Q.value=q;
+  const g=a.createGain(); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  s.connect(f).connect(g).connect(a.destination); s.start(t,Math.random()*.5); s.stop(t+dur+.03);
+}
+const sfx={
+  rattle(){for(let i=0;i<6;i++)noise(.035,.22,2600+Math.random()*1200,i*.07,2)},
+  settle(){noise(.06,.3,1800,0,2);tone(700,.05,'triangle',.06)},
+  step(){noise(.04,.16,500+Math.random()*200,0,1.5);tone(220+Math.random()*60,.05,'triangle',.08)},
+  out(){tone(392,.09,'square',.05);tone(587,.12,'square',.05,0,.08)},
+  thump(){tone(130,.3,'sine',.55,.35);noise(.18,.4,260,0,.7)},
+  boing(){tone(260,.4,'sine',.22,3.2)},
+  whoosh(){noise(.45,.22,1400,0,.6)},
+  pop(){tone(880,.06,'sine',.07,1.6)},
+  cheer(){[523,659,784,1047].forEach((f,i)=>tone(f,.2,'triangle',.13,0,i*.09))},
+  buzz(){tone(140,.35,'sawtooth',.08,.7)},
+  fanfare(){[392,523,659,784,659,784,1047].forEach((f,i)=>tone(f,.22,'triangle',.14,0,i*.13))},
+  clunk(){tone(170,.14,'square',.07,.6);noise(.09,.3,650,0,1.2)},
+  tick(){tone(1500,.03,'square',.05);tone(1100,.03,'square',.05,0,.14)},
+  boom(){tone(75,1,'sine',.7,.3);noise(1,.6,170,0,.5);noise(.45,.45,900,0,.6)},
+  kick(){noise(.08,.5,900,0,1.2);tone(220,.12,'square',.08,.5)},
+  rival(){tone(1250,.45,'sine',.08,.55);tone(1250,.45,'sine',.08,.55,.5);tone(98,.5,'triangle',.2,1,.9)},
+  mystery(){[392,494,587,784].forEach((f,i)=>tone(f,.12,'sine',.1,0,i*.08))},
+  wahwah(){[392,370,349,294].forEach((f,i)=>tone(f,i===3?.6:.22,'sawtooth',.07,i===3?.92:1,i*.24))},
+  payback(){[330,330,392,494].forEach((f,i)=>tone(f,.16,'sawtooth',.07,0,i*.15));tone(110,.6,'sine',.3,.8,.6)},
+  mark(){tone(620,.08,'square',.05,.7);tone(460,.12,'square',.05,.7,.09)},
+  punch(){noise(.06,.35,600+Math.random()*600,0,1.4);tone(150+Math.random()*90,.07,'square',.06,.5)},
+  ding(){tone(1320,.7,'sine',.11,1);tone(2640,.45,'sine',.035,1)},
+  splat(){noise(.12,.28,480,0,.9);tone(110,.08,'sine',.14,.6)},
+};
+
+// ---------- state ----------
+// Ink is the locked look (2026-10-19); the toy drawing code stays dormant behind LOOK
+const LOOK='ink';
+let SPEED=1;
+try{SPEED=+localStorage.getItem('lw.speed')||1}catch(e){}
+const DEMO=location.hash==='#demo';
+// who plays each colour; set on the setup screen (#demo = four bots)
+const COLOUR=['Red','Green','Yellow','Blue'], BOTNAME=['Lt. Red','Sgt. Green','Cpl. Yellow','Pvt. Blue'];
+// voices were tried (gibberish + speech) and switched off on 2026-10-19 because they felt robotic; set 'babble' or 'speech' to revive
+let HUMANS=[true,false,false,false],TEAMS=['','','',''];
+const VOICE='off';
+try{const h=JSON.parse(localStorage.getItem('lw.humans'));if(Array.isArray(h)&&h.length===4)HUMANS=h.map(Boolean)}catch(e){}
+try{const n=JSON.parse(localStorage.getItem('lw.teams'));if(Array.isArray(n)&&n.length===4)TEAMS=n.map(x=>String(x||'').slice(0,14))}catch(e){}
+if(DEMO)HUMANS=[false,false,false,false];
+const isHuman=s=>!!S.humans[s];
+const soloHuman=()=>S.humans.filter(Boolean).length===1;
+function applyNames(){
+  const solo=soloHuman();
+  SEATS.forEach((st,s)=>{st.name=S.humans[s]?(TEAMS[s].trim()||(solo?'You':COLOUR[s])):BOTNAME[s]});
+}
+
+let S;
+function newState(){
+  const tokens=[];
+  const names=NAMES.slice().sort(()=>Math.random()-.5);
+  for(let s=0;s<4;s++)for(let i=0;i<4;i++)tokens.push({seat:s,i,p:-1,anim:null,face:1,seed:s*4+i+1,dx:0,dy:0,sc:1,flat:0,flatT:0,landT:-9,soot:false,
+    name:names[s*4+i],miss:0,tantrumT:-9});
+  return{tokens,turn:0,gt:0,rt:S?S.rt:0,waiters:[],awaitRoll:null,awaitPick:null,selectable:[],forced:0,
+    dice:{v:6,rolling:false,seat:0,t0:0},hist:[[],[],[],[]],drought:[0,0,0,0],
+    bubbles:[],pops:[],parts:[],shakeT:-9,shakeA:0,over:false,winner:-1,phase:'roll',captures:0,
+    bombs:[],booms:0,bombHits:0,flashT:-9,grudges:[],marks:0,paybacks:0,
+    retreat:null,crate:null,mystForce:null,mystNext:'good',mysteries:0,mystGood:0,retreats:0,
+    rivals:new Map(),rivalTop:null,epitaphs:[],ceasefires:0,meltdowns:0,forceCease:false,ceased:new Set(),ceaseUsed:[],
+    booted:false,boots:0,reinforced:0,only:null,squads:0,pairsUsed:[],brawl:null,throws:[],shameDing:-9,shames:0,
+    humans:HUMANS.slice(),started:false,idleT:0,idleSaid:false,taunts:0,
+    poolCount:{},lineVars:null,said:[],events:new Set(),capLog:[],lossStreak:[0,0,0,0],target:null,turnNo:0,firstHome:-1};
+}
+
+// game-time waits: everything gameplay-side runs on S.gt so the speed button scales it
+const wait=sec=>new Promise(res=>S.waiters.push({t:S.gt+sec,res}));
+
+// ---------- positions ----------
+const idxOf=t=>(SEATS[t.seat].start+t.p)%52;
+function posAt(seat,p,i){
+  const st=SEATS[seat];
+  if(p<0){const[bx,by]=st.base;return{x:bx+SLOT[i][0],y:by+SLOT[i][1]}}
+  if(p<=50){const[c,r]=TRACK[(st.start+p)%52];return{x:c+.5,y:r+.5}}
+  if(p<=55){const[c,r]=st.home[p-51];return{x:c+.5,y:r+.5}}
+  return{x:st.fin[0]+FIN_OFF[i][0],y:st.fin[1]+FIN_OFF[i][1]};
+}
+const posOf=t=>posAt(t.seat,t.p,t.i);
+
+// ---------- rules ----------
+// squad-up: two of your soldiers on one square stack (t.mate) and move together at half the roll, rounded up, until home.
+// Any enemy landing on them captures both. The top soldier rides along; the bottom one is the one you tap.
+const stepOf=(t,roll)=>t.mate?Math.ceil(roll/2):roll;
+const canMove=(t,roll)=>t.p===-1?roll===6:t.p<56&&t.p+stepOf(t,roll)<=56;
+const legal=(seat,roll)=>S.tokens.filter(t=>t.seat===seat&&!(t.mate&&t.top)&&canMove(t,roll));
+// a stack dissolves once its soldiers are no longer on the same square (captured, bombed, drilled, or home)
+function sweepStacks(){for(const t of S.tokens)if(t.mate&&(t.mate.mate!==t||t.p!==t.mate.p||t.p<0||t.p>=56)){t.mate=null;t.top=false}}
+// a banter pair that hasn't played yet this game; the second line follows on its own while play continues
+function pickPair(list){const fresh=list.filter(p=>!S.pairsUsed.includes(p)),p=pick(fresh.length?fresh:list);S.pairsUsed.push(p);return p}
+function banter(a,b,pair,gap=.95){sayText(a,pair[0]);(async()=>{await wait(gap);if(!S.over)sayText(b,pair[1])})()}
+async function squadUp(a,b){
+  a.mate=b;b.mate=a;a.top=true;b.top=false;S.squads++;
+  sfx.out();popText(b.dx,b.dy-1.9,'SQUAD UP!',a.seat,.7);banter(a,b,pickPair(SQUAD_UP));
+  await wait(1.2);
+}
+function victimsAt(seat,p){
+  if(p<0||p>50)return[];
+  const idx=(SEATS[seat].start+p)%52; if(SAFE.has(idx))return[];
+  return S.tokens.filter(t=>t.seat!==seat&&t.p>=0&&t.p<=50&&idxOf(t)===idx);
+}
+function danger(seat,idx){
+  if(SAFE.has(idx))return false;
+  return S.tokens.some(e=>{if(e.seat===seat||e.p<0||e.p>50)return false;const d=(idx-idxOf(e)+52)%52;return d>=1&&d<=6&&e.p+d<=50});
+}
+function botPick(seat,roll,moves){
+  let best=moves[0],bs=-1e9;
+  const hot=S.bombs.filter(b=>b.fuse<=1);
+  for(const t of moves){
+    const np=t.p===-1?0:t.p+stepOf(t,roll); let s=np*.3+Math.random()*4;
+    if(np===56)s+=60;
+    if(np<=50){
+      const idx=(SEATS[seat].start+np)%52, vs=victimsAt(seat,np);
+      if(vs.length)s+=100+Math.max(...vs.map(v=>v.p))+(vs.some(v=>isMarked(v,seat))?40:0)
+        +(S.target&&S.target.until>S.turnNo&&S.target.seat!==seat&&vs.some(v=>v.seat===S.target.seat)?70:0);
+      if(SAFE.has(idx))s+=15;
+      if(danger(seat,idx))s-=30;
+      if(!SAFE.has(idx)&&hot.some(b=>BLAST(b.idx).includes(idx)))s-=45;
+    }else s+=25;
+    if(t.p===-1)s+=50;
+    if(t.p>=0&&t.p<=50&&danger(seat,idxOf(t)))s+=22;
+    if(hot.some(b=>inBlast(t,b)))s+=35;
+    if(s>bs){bs=s;best=t}
+  }
+  return best;
+}
+
+// ---------- revenge: whoever captures your soldier is marked for your next REVENGE_TURNS turns ----------
+const REVENGE_TURNS=2;
+const isMarked=(t,hunter)=>S.grudges.some(g=>g.target===t&&g.hunter===hunter);
+function markAttacker(atk,victims){
+  // a captured soldier's own marks die with it; each victim's side then marks the attacker
+  S.grudges=S.grudges.filter(g=>!victims.includes(g.target));
+  for(const seat of new Set(victims.map(v=>v.seat))){
+    S.grudges=S.grudges.filter(g=>!(g.target===atk&&g.hunter===seat));
+    S.grudges.push({hunter:seat,target:atk,left:REVENGE_TURNS,t0:S.rt});
+    S.marks++;
+  }
+}
+function endTurnGrudges(seat){
+  S.grudges.forEach(g=>{if(g.hunter===seat)g.left--});
+  S.grudges=S.grudges.filter(g=>g.left>0&&g.target.p>=0&&g.target.p<=50);
+}
+
+// ---------- bombs: earned by two 6s in a row, fuse counts down at the planter's turns, blast = square +-1 ----------
+const BLAST=idx=>[(idx+51)%52,idx,(idx+1)%52];
+const inBlast=(t,b)=>t.p>=0&&t.p<=50&&!SAFE.has(idxOf(t))&&BLAST(b.idx).includes(idxOf(t));
+function bombCands(seat){
+  if(S.bombs.some(b=>b.seat===seat))return[];
+  return S.tokens.filter(t=>t.seat===seat&&t.p>=0&&t.p<=50&&!SAFE.has(idxOf(t))&&!S.bombs.some(b=>b.idx===idxOf(t)));
+}
+function botBomb(seat,cands){
+  let best=null,bs=0;
+  for(const t of cands){
+    const idx=idxOf(t);
+    const s=S.tokens.filter(e=>{if(e.seat===seat||e.p<0||e.p>50)return false;const d=(idx-idxOf(e)+52)%52;return d<=8}).length;
+    if(s>bs){bs=s;best=t}
+  }
+  return best;
+}
+async function plant(t){
+  S.bombs.push({seat:t.seat,idx:idxOf(t),fuse:3,t0:S.gt,tickT:-9});
+  sfx.clunk();say(t,'plant');
+  await wait(.75);
+}
+async function tickBombs(seat){
+  for(const b of S.bombs.filter(b=>b.seat===seat)){
+    b.fuse--;b.tickT=S.gt;
+    if(b.fuse<=0){await explode(b);continue}
+    sfx.tick();
+    if(b.fuse===1){const near=S.tokens.filter(t=>inBlast(t,b));if(near.length)say(pick(near),'ticking',.85)}
+    await wait(.4);
+  }
+}
+async function explode(b){
+  const[c,r]=TRACK[b.idx],x=c+.5,y=r+.5;
+  const vic=S.tokens.filter(t=>inBlast(t,b));
+  S.bombs=S.bombs.filter(o=>o!==b);
+  sfx.boom();shake(16);S.flashT=S.rt;burst(x,y,b.seat,'huge');
+  popText(x,y-.8,pick(['KABOOM!','BOOM!','KA-BLAM!']),b.seat);
+  S.booms++;S.bombHits+=vic.length;
+  await wait(.4);
+  if(!vic.length){
+    const mine=S.tokens.filter(t=>t.seat===b.seat&&t.p>=0&&t.p<56);
+    if(mine.length)say(pick(mine),'bombMiss',.8);
+    await wait(.5);return;
+  }
+  vic.forEach(v=>{v.soot=true;v.flat=0;epitaph(v,'bomb')});
+  const own=vic.find(v=>v.seat===b.seat),other=vic.find(v=>v.seat!==b.seat);
+  say(own||other,own?'selfBomb':'bombVic');
+  await wait(.7);
+  sfx.whoosh();
+  // the blast throws them a couple of squares; they land sooty and walk home in shame
+  await Promise.all(vic.map(v=>{const d={x:clamp(v.dx+(Math.random()-.5)*2.6,1,14),y:clamp(v.dy+(Math.random()-.5)*2.6,1,14)};
+    v.shameFrom=d;v.shameP=v.p;const f=fly(v,'punt',d);v.p=-1;return f}));
+  vic.forEach(v=>v.dazeT=S.gt);
+  if(own&&other)say(other,'bombVic',.6);
+  await wait(.4);
+  await shameWalk(vic);
+}
+
+// test scenes always stage Red, so they run only while Red is a human waiting to roll
+const canDrill=()=>S.started&&S.awaitRoll&&!S.drill&&!S.over&&S.turn===0&&isHuman(0);
+// test drills for batch A. Each puts your only soldier out in position and sets your next roll
+function soloOut(p){
+  const mine=S.tokens.filter(t=>t.seat===0);
+  mine.forEach(t=>{t.p=t.i===0?p:-1;t.soot=false});
+  return mine[0];
+}
+function clearRing(idxs,keep){S.tokens.forEach(t=>{if(t.seat!==0&&t!==keep&&t.p>=0&&t.p<=50&&idxs.includes(idxOf(t)))t.p=-1})}
+async function reinforceDrill(){
+  // everyone back in base, then the parachute drop plays straight away
+  if(!canDrill())return;
+  S.drill=true;
+  S.tokens.filter(t=>t.seat===0).forEach(t=>{t.p=-1;t.soot=false});
+  await reinforce(0);
+  S.drill=false;ui();
+}
+function bootDrill(){
+  // your back soldier lands on your front one with a 3; the kick sends the front one onto Green
+  if(!canDrill())return;
+  const mine=S.tokens.filter(t=>t.seat===0),green=S.tokens.find(t=>t.seat===1&&t.i===0);
+  mine.forEach(t=>{t.p=t.i===0?10:t.i===1?13:-1;t.soot=false});
+  clearRing([49,50,51,0,1,2,3],green);green.p=3;green.soot=false;S.retreat=null;
+  S.only=mine[0];S.forced=3;sayText(mine[0],"Watch this.");ui();
+}
+function brawlDrill(){
+  // a Blue soldier stands 3 ahead of your only soldier out, far from his camp, with hecklers along his way home; next roll 3
+  if(!canDrill())return;
+  soloOut(14);const put=(seat,i,idx)=>{const t=S.tokens.find(t=>t.seat===seat&&t.i===i);t.p=(idx-SEATS[seat].start+52)%52;t.soot=false};
+  clearRing([1,2,3,4,31,43,44],null);S.retreat=null;
+  put(3,0,4);put(1,0,2);put(2,0,31);put(1,1,43);put(2,1,44);
+  S.grudges=S.grudges.filter(g=>g.hunter!==0);S.forced=3;ui();
+}
+function squadDrill(){
+  // your back soldier lands on your front one with a 3: press "Stack up", then roll a 6 to watch the stack walk 3
+  if(!canDrill())return;
+  const mine=S.tokens.filter(t=>t.seat===0);
+  mine.forEach(t=>{t.p=t.i===0?10:t.i===1?13:-1;t.soot=false;t.mate=null;t.top=false});
+  clearRing([49,50,51,0,1,2,3,4,5],null);S.retreat=null;
+  S.only=mine[0];S.forced=3;sayText(mine[1],"Need a lift?");ui();
+}
+function meltdownDrill(){
+  // one square from home, roll a 5: press again to keep escalating (the miss count stays on the soldier)
+  if(!canDrill())return;
+  soloOut(55);S.retreat=null;S.forced=5;ui();
+}
+function rivalsDrill(){
+  // Green is 3 ahead and you have already traded two captures with him: this one makes three
+  if(!canDrill())return;
+  const me=soloOut(14),green=S.tokens.find(t=>t.seat===1&&t.i===0);
+  clearRing([1,2,3,4],green);green.p=4;green.soot=false;S.retreat=null;
+  S.rivals.set([me.seed,green.seed].sort((a,b)=>a-b).join('-'),2);
+  sayText(green,"Oh no. Not HIM again.");S.forced=3;ui();
+}
+function ceasefireDrill(){
+  // Green sits on the star 3 ahead of you
+  if(!canDrill())return;
+  soloOut((44-SEATS[0].start+52)%52);
+  const green=S.tokens.find(t=>t.seat===1&&t.i===0);
+  clearRing([45,46,47],green);green.p=47;green.soot=false;S.retreat=null;
+  S.forceCease=true;S.forced=3;ui();
+}
+
+// test drill: your only soldier out stands 3 short of the mystery square, next roll 3; outcome alternates good / bad
+function mysteryDrill(){
+  if(!canDrill())return;
+  const mine=S.tokens.filter(t=>t.seat===0);
+  const M=MYSTERIES[1];
+  mine.forEach(t=>{t.p=t.i===0?(M-3-SEATS[0].start+52)%52:-1;t.soot=false});
+  S.tokens.forEach(t=>{if(t.seat!==0&&t.p>=0&&t.p<=50&&[M-2,M-1,M].includes(idxOf(t)))t.p=-1});
+  S.retreat=null;S.forced=3;S.mystForce=S.mystNext;S.mystNext=S.mystNext==='good'?'bad':'good';
+  sfx.mystery();ui();
+}
+
+// test drill: Green has your mark and stands 3 squares ahead of your only soldier out; your next roll is a 3
+function revengeDrill(){
+  if(!canDrill())return;
+  const mine=S.tokens.filter(t=>t.seat===0),green=S.tokens.find(t=>t.seat===1&&t.i===0);
+  mine.forEach(t=>{t.p=t.i===0?14:-1;t.soot=false});
+  S.tokens.forEach(t=>{if(t.seat!==0&&t!==green&&t.p>=0&&t.p<=50&&[1,2,3,4].includes(idxOf(t)))t.p=-1});
+  green.p=4;green.soot=false;
+  S.grudges=S.grudges.filter(g=>g.target!==green);
+  S.grudges.push({hunter:0,target:green,left:REVENGE_TURNS,t0:S.rt});
+  S.forced=3;sfx.mark();say(green,'spotted');ui();
+}
+
+// test drill: one soldier of each colour around a plain square, your bomb on its last count, then it goes off
+async function bombDrill(){
+  if(!canDrill())return;
+  S.drill=true;
+  const at=44, put=(seat,i,idx)=>{const t=S.tokens.find(t=>t.seat===seat&&t.i===i);t.p=(idx-SEATS[seat].start+52)%52;t.soot=false;t.flat=0};
+  put(0,0,45);put(1,0,44);put(3,0,44);put(2,0,43);put(1,1,46);
+  S.bombs=S.bombs.filter(b=>b.seat!==0&&b.idx!==at);
+  const b={seat:0,idx:at,fuse:1,t0:S.gt,tickT:S.gt};
+  S.bombs.push(b);sfx.clunk();
+  await wait(.5);
+  say(S.tokens.find(t=>t.seat===2&&t.i===0),'ticking');
+  say(S.tokens.find(t=>t.seat===1&&t.i===1),'outside');
+  await wait(2.2);
+  b.fuse=0;await explode(b);
+  S.drill=false;
+}
+
+// ---------- speech, pops, particles ----------
+// common moments talk less as a game goes on, so the lines land on the big moments
+const DAMP=new Set(['six','out','safe','stretch','noMove','capAtk','capVic','stuck','home','reinforce','showoff','supply','meltHuman']);
+function say(t,pool,prob=1,vars){
+  if(!t)return;
+  if(DAMP.has(pool)){const n=S.poolCount[pool]=(S.poolCount[pool]||0)+1;prob*=Math.max(.35,1/(1+.08*Math.max(0,n-4)))}
+  if(Math.random()>prob)return;
+  sayText(t,line(pool,t,vars));
+}
+function sayText(t,text){
+  if(!t)return;
+  S.bubbles=S.bubbles.filter(b=>b.tok!==t);
+  if(S.bubbles.length>=2)S.bubbles.shift();
+  S.bubbles.push({tok:t,text,t0:S.rt,dur:2.6});S.said.push(text);
+  if(VOICE==='off'||!soundOn)sfx.pop();
+  else voice(t,text);
+}
+// a bot soldier teases the humans; the given speaker is used when it is a bot
+function taunt(pool,speaker){
+  if(!S.humans.some(Boolean)||S.humans.every(Boolean))return false;
+  const bots=S.tokens.filter(t=>!isHuman(t.seat)&&t.p<56),out=bots.filter(t=>t.p>=0);
+  const sp=speaker&&!isHuman(speaker.seat)?speaker:out.length?pick(out):bots.length?pick(bots):null;
+  if(!sp)return false;
+  S.taunts++;sayText(sp,line(pool,sp));
+  return true;
+}
+
+// ---------- voices: gibberish babble (default) or the device's speech engine ----------
+const robotic=t=>!isHuman(t.seat)&&S.humans.some(Boolean);
+function voice(t,text){
+  if(VOICE==='speech'&&speechReady()){speak(t,text);return}
+  babble(t,text);
+}
+function babble(t,text){
+  const a=ac();if(!a)return;
+  const bot=robotic(t),base=[250,190,320,220][t.seat]*(1+(t.i-1.5)*.06);
+  const syl=Math.min(16,Math.max(2,Math.round(text.length/5)));
+  const ques=/\?\s*$/.test(text),loud=/!/.test(text)||/[A-Z]{4}/.test(text);
+  let tt=a.currentTime+.02;
+  for(let k=0;k<syl;k++){
+    const d=.055+Math.random()*.05;
+    let f=base*(1+(Math.random()-.5)*.4);
+    if(ques&&k>=syl-2)f*=1.3+(k-syl+2)*.18;
+    if(loud)f*=1.15;
+    const o=a.createOscillator(),g=a.createGain(),flt=a.createBiquadFilter();
+    o.type=bot?'square':'triangle';o.frequency.setValueAtTime(f,tt);
+    // humans' soldiers slide between pitches; bots step like a modem
+    if(!bot)o.frequency.linearRampToValueAtTime(f*(1+(Math.random()-.5)*.25),tt+d);
+    flt.type='bandpass';flt.frequency.value=bot?1300:700+Math.random()*1100;flt.Q.value=bot?4:1.2;
+    const v=loud?.3:.22;
+    g.gain.setValueAtTime(.0001,tt);g.gain.exponentialRampToValueAtTime(v,tt+.012);g.gain.exponentialRampToValueAtTime(.0001,tt+d);
+    o.connect(flt).connect(g).connect(a.destination);o.start(tt);o.stop(tt+d+.03);
+    tt+=d+.025+(Math.random()<.18?.06:0);
+  }
+}
+let speechBroken=false,VOICES=null;
+function speechReady(){return !speechBroken&&'speechSynthesis' in window&&typeof SpeechSynthesisUtterance!=='undefined'}
+function speak(t,text){
+  try{
+    const ss=window.speechSynthesis;
+    if(ss.pending)ss.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    const bot=robotic(t);
+    u.pitch=bot?.5:[1.5,1.2,1.85,1.35][t.seat]+(t.i%2?.12:0);
+    u.rate=bot?1:1.2;u.volume=1;
+    if(!VOICES||!VOICES.length)VOICES=ss.getVoices();
+    const en=VOICES.find(v=>/^en/i.test(v.lang));if(en)u.voice=en;
+    u.onerror=e=>{if(e&&e.error&&e.error!=='interrupted'&&e.error!=='canceled'){speechBroken=true;ui()}};
+    ss.speak(u);
+  }catch(e){speechBroken=true;babble(t,text)}
+}
+if('speechSynthesis' in window)try{speechSynthesis.onvoiceschanged=()=>{VOICES=null}}catch(e){}
+function epitaph(v,kind){
+  const p=posOf(v);
+  S.epitaphs.push({x:p.x,y:p.y,text:pick(EPITAPH[kind]).replace('{n}',v.name),t0:S.rt,rot:(Math.random()-.5)*.5});
+  if(S.epitaphs.length>3)S.epitaphs.shift();
+}
+// two enemies sharing a star make small talk; returns true when it played
+async function ceasefire(t){
+  if(t.p<0||t.p>50||!SAFE.has(idxOf(t)))return false;
+  const mate=S.tokens.find(o=>o.seat!==t.seat&&o.p>=0&&o.p<=50&&idxOf(o)===idxOf(t));
+  if(!mate)return false;
+  // once per pair of soldiers per game, and not every time, so it stays a surprise
+  const key=[t.seed,mate.seed].sort((a,b)=>a-b).join('-');
+  if(!S.forceCease&&(S.ceasefires>=4||S.ceased.has(key)||Math.random()>.4))return false;
+  S.forceCease=false;S.ceasefires++;S.ceased.add(key);
+  const fresh=CEASEFIRE.filter(p=>!S.ceaseUsed.includes(p));
+  const pair=pick(fresh.length?fresh:CEASEFIRE);S.ceaseUsed.push(pair);
+  const[a,b]=pair;
+  sayText(t,a);await wait(1.1);sayText(mate,b);await wait(.9);
+  return true;
+}
+function meltdown(t,human){
+  t.miss++;S.meltdowns++;
+  // bots voice the scripted escalation, then only now and then
+  if(!human&&(t.miss>MELT.length?Math.random()>.25:Math.random()>.7))return;
+  sayText(t,line(t.miss<=5?'melt'+t.miss:'meltMore',t));
+  if(t.miss===3){t.tantrumT=S.gt;sfx.buzz()}
+  if(human&&t.miss>=3&&Math.random()<.5)taunt('meltHuman');
+}
+function popText(x,y,text,seat,size=1){S.pops.push({x,y,text,seat,size,t0:S.rt})}
+function burst(x,y,seat,kind){
+  const n=kind==='huge'?40:kind==='big'?22:12;
+  for(let k=0;k<n;k++){
+    const a=Math.random()*Math.PI*2, v=(1.5+Math.random()*3.5)*(kind==='huge'?1.7:1);
+    S.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-2,life:.5+Math.random()*.5,t0:S.gt,seat,r:.05+Math.random()*.09,kind:Math.random()<.35?'star':'blob',spin:Math.random()*6});
+  }
+  for(let k=0;k<6;k++)S.parts.push({x:x+(Math.random()-.5)*.6,y:y+.25,vx:(Math.random()-.5)*1.4,vy:-.2,life:.6,t0:S.gt,seat:-1,r:.15,kind:'dust'});
+}
+function shake(a){if(!reduceMotion){S.shakeT=S.rt;S.shakeA=a}}
+
+// ---------- animations ----------
+async function hop(t,from,to,opt={}){
+  if(to.x!==from.x)t.face=(to.x<from.x?-1:1)*(opt.back?-1:1);
+  const dur=opt.dur||.2;
+  t.anim={kind:'hop',from,to,t0:S.gt,dur,h:opt.h||.42};
+  await wait(dur);
+  t.anim=null; t.landT=S.gt; if(!opt.quiet)sfx.step();
+}
+async function fly(t,kind,dest){
+  const from={x:t.dx,y:t.dy}, to=dest||posAt(t.seat,-1,t.i);
+  if(kind==='chute'){
+    t.anim={kind:'fly',from,to:{x:from.x,y:-3},t0:S.gt,dur:.45,arc:0,spin:2.5,ease:'in'};
+    await wait(.45);
+    t.anim={kind:'chute',from:{x:to.x,y:to.y-8},to,t0:S.gt,dur:1.6};
+    if(t.chuteSay){const f=t.chuteSay;t.chuteSay=null;f()}
+    await wait(1.6);
+  }else{
+    const punt=kind==='punt', dur=punt?1.05:.8;
+    t.anim={kind:'fly',from,to,t0:S.gt,dur,arc:punt?6:3,spin:punt?3:1.5};
+    await wait(dur);
+  }
+  t.anim=null; t.landT=S.gt; sfx.step();
+}
+function animPos(t){
+  const a=t.anim, k=clamp((S.gt-a.t0)/a.dur,0,1);
+  if(a.kind==='shame'){
+    const d=k*a.len;let i=1;while(i<a.cum.length-1&&a.cum[i]<d)i++;
+    const p0=a.path[i-1],p1=a.path[i],seg=a.cum[i]-a.cum[i-1]||1,f=clamp((d-a.cum[i-1])/seg,0,1);
+    if(Math.abs(p1.x-p0.x)>.01)t.face=p1.x<p0.x?-1:1;
+    return{x:lerp(p0.x,p1.x,f),y:lerp(p0.y,p1.y,f)-Math.abs(Math.sin(d*Math.PI))*.08,rot:0,legs:d*.5};
+  }
+  if(a.kind==='hop')return{x:lerp(a.from.x,a.to.x,k),y:lerp(a.from.y,a.to.y,k)-Math.sin(Math.PI*k)*a.h,rot:0,legs:k};
+  if(a.kind==='chute'){const e=1-(1-k)*(1-k)*.4-.6*(1-k);return{x:a.to.x+Math.sin(k*9)*.35*(1-k),y:lerp(a.from.y,a.to.y,clamp(e,0,1)),rot:Math.sin(k*9)*.25*(1-k),chute:k<.97}}
+  const e=a.ease==='in'?k*k:k;
+  return{x:lerp(a.from.x,a.to.x,e),y:lerp(a.from.y,a.to.y,e)-Math.sin(Math.PI*k)*a.arc,rot:a.spin*Math.PI*2*k,legs:k*3};
+}
+
+// ---------- turn flow ----------
+async function move(t,roll){
+  const seat=t.seat;
+  if(t.p===-1){
+    await hop(t,posOf(t),posAt(seat,0,t.i),{h:1.1,dur:.38});
+    t.p=0; t.soot=false; t.splat=0; sfx.out();
+    const mate=S.tokens.find(o=>o!==t&&o.seat===seat&&o.p===0&&!o.mate);
+    if(mate)await squadUp(t,mate);
+    else if(!await ceasefire(t))say(t,'out',.5);
+    return{captured:false,home:false};
+  }
+  const m=t.mate,steps=stepOf(t,roll);
+  const start=t.p, target=t.p+steps, victims=victimsAt(seat,target);
+  const payback=victims.some(v=>isMarked(v,seat));
+  const squadV=victims.some(v=>v.mate&&victims.includes(v.mate));
+  const style=victims.length?(payback?'stomp':squadV?'chute':'brawl'):null;
+  if(m&&steps<roll)popText(t.dx,t.dy-2,`SQUAD: ${steps} STEP${steps>1?'S':''}`,seat,.55);
+  if(m&&Math.random()<.6)banter(m,t,pickPair(SQUAD_TALK),.85);
+  for(let k=1;k<=steps;k++){
+    const last=k===steps,opt=last&&style==='stomp'?{h:1.5,dur:.42}:m?{h:.16,dur:.3}:{};
+    await Promise.all([hop(t,posAt(seat,t.p,t.i),posAt(seat,t.p+1,t.i),opt),m&&hop(m,posAt(seat,m.p,m.i),posAt(seat,m.p+1,m.i),{...opt,rider:true,quiet:true})]);
+    t.p++;if(m)m.p++;
+  }
+  if(victims.length){
+    await capture(t,victims,style,payback);
+    return{captured:true,home:false,extra:onMystery(t)?await mystery(t):false};
+  }
+  if(onMystery(t))return{captured:false,home:false,extra:await mystery(t)};
+  // ending on your own lone soldier: kick it (the Boot) or stack up with it
+  if(t.p<56&&!t.mate){
+    const mate=S.tokens.find(o=>o!==t&&o.seat===seat&&o.p===t.p&&!o.mate);
+    if(mate){
+      if(t.p<=50&&!S.booted&&mate.p+3<=56){const r=await bootOffer(t,mate);if(r)return r}
+      await squadUp(t,mate);
+    }
+  }
+  if(t.p===56){
+    sfx.cheer(); const p=posOf(t); burst(p.x,p.y,seat,'big');
+    if(t.miss>=2)sayText(t,line('finally',t));else say(t,'home');
+    await wait(.6);await director('home',{t});return{captured:false,home:true};
+  }
+  if(start<=50&&t.p>50)say(t,'stretch',.35);
+  else if(await ceasefire(t)){}
+  else if(t.p<=50&&SAFE.has(idxOf(t))&&!STARTS.has(idxOf(t)))say(t,'safe',.3);
+  return{captured:false,home:false};
+}
+// the boot: ending a move on your own soldier lets you kick it 3 squares on; it captures what it lands on
+async function bootOffer(t,mate){
+  let yes;
+  if(isHuman(t.seat)){
+    S.selectable=[mate];S.phase='boot';
+    const pending=new Promise(r=>S.awaitPick=r);ui();
+    yes=!!(await pending);S.awaitPick=null;S.selectable=[];S.phase='moving';ui();
+  }else yes=botBoot(mate);
+  if(!yes)return null;
+  S.booted=true;S.boots++;
+  const from={x:mate.dx,y:mate.dy},np=mate.p+3,to=posAt(mate.seat,np,mate.i);
+  sfx.kick();shake(5);t.landT=S.gt;
+  popText(from.x,from.y-1,'BOOT!',t.seat,.8);say(t,'bootAtk');
+  mate.face=to.x<from.x?-1:1;
+  mate.anim={kind:'fly',from,to,t0:S.gt,dur:.7,arc:1.8,spin:1.5};
+  await wait(.15);say(mate,'bootVic');
+  await wait(.55);
+  mate.anim=null;mate.p=np;mate.landT=S.gt;sfx.step();
+  if(np===56){sfx.cheer();burst(to.x,to.y,mate.seat,'big');say(mate,'home');await wait(.6);return{captured:false,home:true}}
+  const victims=victimsAt(mate.seat,np);
+  if(victims.length){
+    await capture(mate,victims,'brawl',victims.some(v=>isMarked(v,mate.seat)),false,'boot');
+    return{captured:true,home:false};
+  }
+  const own=S.tokens.find(o=>o!==mate&&o!==t&&o.seat===mate.seat&&o.p===np&&!o.mate);
+  if(own)await squadUp(mate,own);else await wait(.3);
+  return{captured:false,home:false};
+}
+function botBoot(mate){
+  const np=mate.p+3,idx=(SEATS[mate.seat].start+np)%52;
+  if(np>50||victimsAt(mate.seat,np).length)return true;
+  if(danger(mate.seat,idxOf(mate))&&!danger(mate.seat,idx))return true;
+  return Math.random()<.3;
+}
+// reinforcements: three turns with nobody out and no 6, and a soldier parachutes onto the start square
+async function reinforce(seat){
+  const t=S.tokens.find(o=>o.seat===seat&&o.p===-1);
+  if(!t)return;
+  S.drought[seat]=0;S.reinforced++;
+  const others=S.tokens.filter(o=>o.seat===seat&&o.p===-1&&o!==t);
+  const to=posAt(seat,0,t.i);
+  sfx.whoosh();popText(to.x,to.y-1.5,'REINFORCEMENTS!',seat,.7);
+  t.anim={kind:'chute',from:{x:to.x,y:to.y-8},to,t0:S.gt,dur:1.6};
+  t.p=0;t.soot=false;
+  await wait(.5);say(t,'reinforce');
+  await wait(1.1);
+  t.anim=null;t.landT=S.gt;sfx.step();
+  if(others.length)say(pick(others),'showoff',.8);
+  await ceasefire(t);
+  await wait(.4);
+}
+
+// mystery square: 50/50 supply drop (extra roll) or retreat orders (next turn's first roll moves this soldier backwards)
+async function mystery(t){
+  S.mysteries++;
+  const good=S.mystForce?S.mystForce==='good':Math.random()<.5;S.mystForce=null;
+  const p=posOf(t);
+  sfx.mystery();popText(p.x,p.y-1.1,'?!',t.seat,.8);
+  await wait(.7);
+  if(good){
+    S.mystGood++;
+    S.crate={x:p.x,y:p.y,t0:S.gt};
+    await wait(.45);
+    S.crate=null;sfx.clunk();burst(p.x,p.y,t.seat,'big');
+    popText(p.x,p.y-1,'SUPPLY DROP!',t.seat,.75);say(t,'supply');sfx.cheer();
+    await wait(.9);
+    return true;
+  }
+  S.retreat={tok:t,seat:t.seat,armed:false};S.retreats++;
+  sfx.wahwah();popText(p.x,p.y-1,'RETREAT!',t.seat,.75);say(t,'retreatOrder');
+  await wait(1.1);
+  return false;
+}
+async function retreatMove(t,v){
+  if(t.mate&&t.top)t=t.mate;
+  const m=t.mate,steps=Math.min(stepOf(t,v),t.p);
+  if(!steps){say(t,'noMove');await wait(.6);return false}
+  say(t,'retreating',.7);
+  for(let k=0;k<steps;k++){
+    await Promise.all([hop(t,posAt(t.seat,t.p,t.i),posAt(t.seat,t.p-1,t.i),{back:true}),m&&hop(m,posAt(m.seat,m.p,m.i),posAt(m.seat,m.p-1,m.i),{back:true,rider:true,quiet:true})]);
+    t.p--;if(m)m.p--;
+  }
+  const victims=victimsAt(t.seat,t.p);
+  if(!victims.length)return false;
+  await capture(t,victims,'brawl',victims.some(v=>isMarked(v,t.seat)),true);
+  return true;
+}
+// ---------- capture scene: a cartoon brawl cloud, then the loser's walk of shame back to camp ----------
+// He trudges back down the track he came up, head hung, to his start square and into camp. The walk is brisk (SHAME_SPEED
+// squares/s, capped at SHAME_MAX s) and the turn waits for it. Every soldier he passes calls out; anyone close, camps
+// included, throws tomatoes, eggs and shoes. Hits leave splats on him until he next leaves base.
+const SHAME_SPEED=6,SHAME_MAX=6;
+const SHAME_CRIES=['SHAME!','SHAAAME!','WALK OF SHAME!','BOOO!','SHAME ON YOU!'];
+const BRAWL_POPS=['POW!','BIFF!','WHACK!','BONK!','OOF!','THWAP!','ZONK!'];
+const nearby=(w,r)=>S.tokens.filter(o=>o!==w&&!o.anim&&!o.hidden&&o.p<56&&Math.hypot(o.dx-w.dx,o.dy-w.dy)<r);
+async function brawl(atk,victims){
+  const all=[atk,...victims],p=posOf(atk);
+  S.brawl={x:p.x,y:p.y,t0:S.gt,dur:1.25,seats:[...new Set(all.map(t=>t.seat))]};
+  all.forEach(t=>t.hidden=true);
+  sfx.whoosh();
+  for(let k=0;k<6;k++){sfx.punch();if(k%2===0)popText(p.x+(Math.random()-.5)*1.4,p.y-.9-Math.random()*.5,pick(BRAWL_POPS),pick(all).seat,.6);await wait(.2)}
+  S.brawl=null;all.forEach(t=>t.hidden=false);
+  sfx.thump();shake(7);burst(p.x,p.y,atk.seat,'big');
+  victims.forEach(v=>v.dazeT=S.gt);
+}
+async function shameWalk(vs){
+  vs.forEach(v=>{
+    // route: where he stands now, back down every track square to his start, then his slot in camp
+    const q0=v.shameP??v.p,path=[v.shameFrom||{x:v.dx,y:v.dy}];
+    for(let q=Math.min(q0,50);q>=0;q--)path.push(posAt(v.seat,q,v.i));
+    path.push(posAt(v.seat,-1,v.i));
+    const cum=[0];for(let k=1;k<path.length;k++)cum.push(cum[k-1]+Math.hypot(path[k].x-path[k-1].x,path[k].y-path[k-1].y));
+    const len=cum[cum.length-1];
+    v.shameFrom=null;v.shameP=null;v.p=-1;
+    v.anim={kind:'shame',path,cum,len,t0:S.gt,dur:clamp(len/SHAME_SPEED,.6,SHAME_MAX),next:S.gt+.15,cried:new Set()};
+  });
+  S.shames++;
+  const w=vs[0],dur=Math.max(...vs.map(v=>v.anim.dur)),crowd=nearby(w,6);
+  if(crowd.length){const c=pick(crowd);sayText(c,line('shameChant',c))}
+  (async()=>{await wait(Math.min(.7,dur*.4));if(w.anim&&w.anim.kind==='shame')sayText(w,line('shameWalk',w))})();
+  await wait(dur);
+  vs.forEach(v=>{if(v.anim&&v.anim.kind==='shame'){v.anim=null;v.landT=S.gt}});
+  sfx.step();
+}
+// per frame: walkers draw fire from whoever is near them; projectiles splat on arrival
+function stepShame(){
+  for(const t of S.tokens){
+    const a=t.anim;if(!a||a.kind!=='shame')continue;
+    for(const o of nearby(t,1.7))if(!a.cried.has(o)){
+      a.cried.add(o);popText(o.dx,o.dy-1.25,pick(SHAME_CRIES),o.seat,.42);
+      if(S.gt-S.shameDing>.3){S.shameDing=S.gt;sfx.ding()}
+    }
+    if(S.gt<a.next)continue;
+    a.next=S.gt+.16+Math.random()*.16;
+    const th=nearby(t,3.6);if(!th.length)continue;
+    const o=pick(th);
+    S.throws.push({x:o.dx,y:o.dy-.7,tgt:t,t0:S.gt,dur:.36,kind:pick(['tomato','tomato','egg','shoe']),spin:3+Math.random()*5});
+  }
+  S.throws=S.throws.filter(p=>{
+    if(S.gt-p.t0<p.dur)return true;
+    const t=p.tgt;
+    if(t.anim&&t.anim.kind==='shame'){
+      t.splat=Math.min(5,(t.splat||0)+1);sfx.splat();
+      const col=p.kind==='egg'?'#f2d24b':p.kind==='shoe'?INK:'#c8402f';
+      for(let k=0;k<5;k++)S.parts.push({x:t.dx,y:t.dy-.6,vx:(Math.random()-.5)*3,vy:-Math.random()*2,life:.35,t0:S.gt,seat:t.seat,col,r:.04+Math.random()*.04,kind:'blob'});
+    }
+    return false;
+  });
+}
+async function capture(atk,victims,style,payback,backwards,via){
+  const close=victims.some(v=>v.p>=44);
+  const x=atk.dx,y=atk.dy;
+  // rivalry counts captures between the same two soldiers in either direction
+  let riv=0,rivV=victims[0];
+  for(const v of victims){const k=[atk.seed,v.seed].sort((a,b)=>a-b).join('-'),n=(S.rivals.get(k)||0)+1;S.rivals.set(k,n);if(n>riv){riv=n;rivV=v}}
+  if(riv>=2&&(!S.rivalTop||riv>=S.rivalTop.n))S.rivalTop={a:atk,b:rivV,n:riv};
+  const lv=Math.min(5,riv),rl=riv>=2?[line('rivAtk'+lv,atk),line('rivVic'+lv,rivV)]:null;
+  victims.forEach(v=>epitaph(v,payback?'payback':backwards?'back':v.p>=44?'close':'plain'));
+  if(rl){
+    popText(x,y-1.9,`RIVALS ×${riv}`,rivV.seat,.7);
+    if(riv>=3&&!payback){sfx.rival();await wait(.8)}
+  }
+  if(payback){
+    S.paybacks++;
+    sfx.payback();say(atk,'payback');
+    popText(x,y-1.3,'PAYBACK!',atk.seat,1.25);
+    await wait(.9);
+  }
+  if(style!=='brawl'){
+    sfx.thump(); shake(payback?14:style==='stomp'?9:6); burst(x,y,atk.seat,payback?'huge':'big');
+    if(!payback)popText(x,y-.6,pick(style==='stomp'?['SPLAT!','STOMP!','FLAT!']:['BONK!','KAPOW!','WHAM!']),atk.seat);
+  }
+  S.captures++;
+  // the attacker is marked now, so the victims' lines below can react to it
+  markAttacker(atk,victims);
+  const botOnHuman=!isHuman(atk.seat)&&victims.some(v=>isHuman(v.seat));
+  const humanOnBot=isHuman(atk.seat)&&!isHuman(victims[0].seat);
+  const squadHit=victims.find(v=>v.mate&&victims.includes(v.mate));
+  const vicPool=payback?'paidBack':backwards?'capVicBack':close?'capVicClose':humanOnBot&&Math.random()<.6?'botHit':Math.random()<.4?'grudge':'capVic';
+  const atkPool=via==='boot'?'bootCap':backwards?'backCap':botOnHuman&&Math.random()<.6?'botCap':'capAtk';
+  S.lineVars={victim:'Pvt. '+victims[0].name,attacker:'Pvt. '+atk.name};
+  const atkSay=()=>rl?sayText(atk,rl[0]):say(atk,atkPool);
+  const vicSay=(prob=1)=>rl?sayText(rivV,rl[1]):squadHit?banter(squadHit,squadHit.mate,pickPair(SQUAD_BLAME),.8):say(victims[0],vicPool,prob);
+  if(style==='brawl'){
+    await brawl(atk,victims);
+    atkSay(); await wait(.6);
+    vicSay(); await wait(.5);
+    await shameWalk(victims);
+  }else if(style==='stomp'){
+    victims.forEach(v=>{v.flat=1;v.flatT=S.gt});
+    if(!payback||rl)atkSay(); await wait(.75);
+    vicSay(); await wait(.85);
+    sfx.boing(); victims.forEach(v=>{v.flat=0;v.dazeT=S.gt});
+    await wait(.3);
+    await shameWalk(victims);
+  }else{
+    atkSay(); sfx.boing();
+    (rl?rivV:victims[0]).chuteSay=()=>vicSay(.9);
+    await Promise.all(victims.map(v=>{const f=fly(v,'chute');v.p=-1;return f}));
+  }
+  sfx.mark();popText(atk.dx,atk.dy-1.1,'MARKED',victims[0].seat,.6);
+  await wait(.4);
+  S.lineVars=null;
+  await director('capture',{atk,victims});
+}
+// ---------- the director: group reactions to how the game is going (each fires once per game per player) ----------
+// A runaway leader (first soldier home, or 45+ progress ahead) gets ganged up on; a bully (3 captures within 8 turns)
+// gets called a Godzilla; both become the bots' target for ~10 turns. Plus underdog, final-stretch and losing-streak lines.
+const seatName=s=>SEATS[s].name,isYouSeat=s=>SEATS[s].name==='You';
+const progressOf=s=>S.tokens.filter(t=>t.seat===s).reduce((a,t)=>a+Math.max(0,t.p),0);
+function voiceFrom(exclude){
+  const c=S.tokens.filter(t=>!exclude.includes(t.seat)&&t.p<56&&!t.anim),bots=c.filter(t=>!isHuman(t.seat)),out=x=>x.filter(t=>t.p>=0);
+  const list=out(bots).length?out(bots):bots.length?bots:out(c).length?out(c):c;
+  return list.length?pick(list):null;
+}
+function once(key){if(S.events.has(key))return false;S.events.add(key);return true}
+function setTarget(s){
+  S.target={seat:s,until:S.turnNo+10};
+  const lead=S.tokens.filter(t=>t.seat===s&&t.p>=0&&t.p<=50).sort((a,b)=>b.p-a.p)[0];
+  if(lead){popText(lead.dx,lead.dy-1.2,'TARGET',s,.65);sfx.mark()}
+}
+async function gangUp(s){
+  const a=voiceFrom([s]);if(!a)return;
+  await wait(.5);sayText(a,line(isYouSeat(s)?'gangUpYou':'gangUp',a,{leader:seatName(s)}));
+  const b=voiceFrom([s,a.seat]);if(b){await wait(1.1);sayText(b,line('gangReply',b))}
+  setTarget(s);
+}
+async function director(ev,d){
+  if(S.over)return;
+  if(ev==='capture'){
+    const a=d.atk.seat,hit=[...new Set(d.victims.map(v=>v.seat))];
+    S.capLog.push({n:S.turnNo,a});S.lossStreak[a]=0;hit.forEach(v=>S.lossStreak[v]++);
+    if(S.capLog.filter(c=>c.a===a&&S.turnNo-c.n<=8).length>=3&&once('bully'+a)){
+      const sp=voiceFrom([a]);
+      if(sp){await wait(.4);sayText(sp,line(isYouSeat(a)?'bullyYou':'bully',sp,{bully:seatName(a)}));
+        const b=voiceFrom([a,sp.seat]);if(b){await wait(1.1);sayText(b,line('gangReply',b))}setTarget(a)}
+      return;
+    }
+    const prog=[0,1,2,3].map(progressOf),last=prog.indexOf(Math.min(...prog)),lead=prog.indexOf(Math.max(...prog));
+    if(a===last&&hit.includes(lead)&&a!==lead&&once('under'+a)){await wait(.4);sayText(d.atk,line('underdog',d.atk));return}
+    for(const v of hit)if(S.lossStreak[v]>=3&&once('streak'+v)){
+      const t=S.tokens.find(x=>x.seat===v&&x.p>=0&&x.p<56)||S.tokens.find(x=>x.seat===v&&x.p<56);
+      if(t){await wait(.6);sayText(t,line('losingStreak',t))}return;
+    }
+  }
+  if(ev==='home'){
+    const s=d.t.seat,n=S.tokens.filter(t=>t.seat===s&&t.p===56).length;
+    if(n===1&&S.firstHome<0){S.firstHome=s;if(once('lead'+s)){await gangUp(s);return}}
+    if(n===3&&once('final'+s)){const sp=voiceFrom([s]);if(sp){await wait(.5);sayText(sp,line('finalStretch',sp,{leader:seatName(s)}));setTarget(s)}return}
+  }
+  if(ev==='move'){
+    const prog=[0,1,2,3].map(progressOf),sorted=prog.slice().sort((x,y)=>y-x),top=prog.indexOf(sorted[0]);
+    if(sorted[0]-sorted[1]>=45&&once('lead'+top))await gangUp(top);
+  }
+}
+function roll(seat){
+  return new Promise(async res=>{
+    const human=isHuman(seat);
+    S.dice.seat=seat;
+    if(human){S.phase='roll';S.idleT=S.rt;S.idleSaid=false;ui();await new Promise(r=>S.awaitRoll=r);S.awaitRoll=null}
+    else await wait(.45);
+    S.phase='rolling';ui();
+    S.dice.rolling=true; S.dice.t0=S.gt; sfx.rattle();
+    await wait(.55);
+    const v=human&&S.forced?S.forced:fairRoll(); if(human)S.forced=0;
+    S.dice.v=v; S.dice.rolling=false; sfx.settle();
+    S.hist[seat].push(v);
+    res(v);
+  });
+}
+async function turn(seat){
+  const human=isHuman(seat);S.turnNo++;
+  if(S.bombs.some(b=>b.seat===seat))await tickBombs(seat);
+  S.booted=false;
+  const nobodyOut=()=>{const mine=S.tokens.filter(t=>t.seat===seat);return mine.every(t=>t.p===-1||t.p===56)&&mine.some(t=>t.p===-1)};
+  // the parachute drop uses up the turn: the new soldier waits for its next turn to roll
+  if(nobodyOut()&&S.drought[seat]>=3){await reinforce(seat);return}
+  let sixes=0, again=true;
+  while(again&&!S.over){
+    again=false;
+    const v=await roll(seat);
+    const allBase=nobodyOut();
+    if(v===6){
+      S.drought[seat]=0; sixes++;
+      if(sixes===3){sfx.buzz();say(pick(S.tokens.filter(t=>t.seat===seat&&t.p<56)),'three');S.phase='three';ui();await wait(1.3);break}
+      if(sixes===2){
+        const cands=bombCands(seat);
+        if(cands.length){
+          let bt;
+          if(human){
+            S.selectable=cands;S.phase='bomb';
+            const pending=new Promise(r=>S.awaitPick=r);ui();
+            bt=await pending;S.awaitPick=null;S.selectable=[];
+          }else{await wait(.3);bt=legal(seat,6).some(t=>t.p>=0&&victimsAt(seat,t.p+stepOf(t,6)).length)?null:botBomb(seat,cands)}
+          // planting uses up the second 6: no move and no extra roll
+          if(bt){await plant(bt);break}
+        }
+      }
+    }else if(allBase)S.drought[seat]++;
+    if(S.retreat&&S.retreat.seat===seat&&S.retreat.armed){
+      const rt=S.retreat.tok;S.retreat=null;
+      if(rt.p>=0&&rt.p<=50){
+        S.phase='moving';ui();
+        const hit=await retreatMove(rt,v);
+        if(v===6||hit)again=true;
+        continue;
+      }
+    }
+    let moves=legal(seat,v);
+    if(S.only&&seat===0){const o=S.only;S.only=null;if(moves.includes(o))moves=[o]}
+    // over-rolled at the finish: the soldier closest to home loses it a little more each time
+    const stuck=S.tokens.filter(t=>t.seat===seat&&t.p>=51&&t.p<56&&!(t.mate&&t.top)&&t.p+stepOf(t,v)>56).sort((a,b)=>b.p-a.p)[0];
+    if(stuck)meltdown(stuck,human);
+    if(!moves.length){
+      const bases=S.tokens.filter(t=>t.seat===seat&&t.p===-1);
+      if(allBase&&S.drought[seat]>=3&&bases.length){
+        if(human&&Math.random()<.5&&taunt('stuckHuman'));
+        else say(pick(bases),'stuck',human?.7:.25);
+      }
+      else if(v===6&&!stuck)say(pick(S.tokens.filter(t=>t.seat===seat&&t.p<56)),'noMove',.4);
+      S.phase='nomove';ui();
+      await wait(.7);
+      if(v===6)again=true;
+      continue;
+    }
+    if(v===6&&sixes<3)say(moves[moves.length-1],'six',.3);
+    let tok;
+    const same=moves.every(t=>t.p===moves[0].p&&!t.mate===!moves[0].mate);
+    let missedBot=null;
+    if(human&&!same){
+      S.selectable=moves;S.phase='pick';S.idleT=S.rt;S.idleSaid=false;ui();
+      tok=await new Promise(r=>S.awaitPick=r);
+      S.awaitPick=null;S.selectable=[];
+      // a human skipped a capture on a bot: that bot will say so after the move
+      const caps=o=>o.p>=0?victimsAt(seat,o.p+stepOf(o,v)).filter(x=>!isHuman(x.seat)):[];
+      if(!caps(tok).length){const alt=moves.find(o=>o!==tok&&caps(o).length);if(alt)missedBot=caps(alt)[0]}
+    }else{
+      if(!human)await wait(.3);
+      tok=human?moves[0]:botPick(seat,v,moves);
+    }
+    S.phase='moving';ui();
+    const r=await move(tok,v);
+    await director('move',{});
+    if(missedBot&&missedBot.p>=0&&Math.random()<.8)taunt('missed',missedBot);
+    if(S.tokens.filter(t=>t.seat===seat).every(t=>t.p===56)){
+      S.over=true;S.winner=seat;sfx.fanfare();
+      const mixed=S.humans.some(Boolean)&&!S.humans.every(Boolean);
+      if(mixed&&!human)sayText(tok,line('botWin',tok));else say(tok,'win');
+      ui();
+      if(mixed&&human){await wait(1.4);taunt('botLose')}
+      return;
+    }
+    if(v===6||r.captured||r.home||r.extra)again=true;
+  }
+}
+async function loop(){
+  while(!S.over){
+    await turn(S.turn);
+    if(S.over)break;
+    endTurnGrudges(S.turn);
+    // retreat orders arm at the end of the turn they were given and expire after the next one
+    if(S.retreat&&S.retreat.seat===S.turn){if(S.retreat.armed)S.retreat=null;else S.retreat.armed=true}
+    S.turn=(S.turn+1)%4;
+    ui();
+  }
+}
+// a fresh state drops the old waiters, which leaves any previous loop suspended forever (that is the cancel)
+function newGame(){
+  S=newState();applyNames();buildBoard();ui();showSetup();
+}
+function startGame(){
+  GAMES++;try{localStorage.setItem('lw.games',GAMES)}catch(e){}
+  S=newState();S.started=true;applyNames();buildBoard();
+  $('#setup').hidden=true;ui();loop();
+}
+let pickHumans=HUMANS.slice(),pickTeams=TEAMS.slice();
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function renderSeats(){
+  $('#seats').innerHTML=COLOUR.map((c,s)=>`<div class="seat"><span class="dot" style="background:${SEATS[s].ink}"></span>`+
+    (pickHumans[s]
+      ?`<input class="nm" id="team${s}" data-s="${s}" maxlength="14" autocomplete="off" placeholder="${c} team name" aria-label="${c} team name" value="${esc(pickTeams[s])}">`
+      :`<span class="nm bot">${BOTNAME[s]}</span>`)+
+    `<span class="seg" role="group" aria-label="${c} player"><button type="button" data-s="${s}" data-h="1" aria-pressed="${pickHumans[s]}">Human</button>`+
+    `<button type="button" data-s="${s}" data-h="0" aria-pressed="${!pickHumans[s]}">Bot</button></span></div>`).join('');
+}
+// battlefields: Classic plays here; Dream and Summit Trek are their own pages bundled beside this one (you vs 3 bots for now)
+const LEVELS={classic:{note:'Humans take turns on this device. When humans and bots play together, the bots tease the humans.',go:'Start the war'},
+  dream:{note:'You vs 3 bots. Every 3 rounds a side of the map folds up, and a staircase bridge opens a shortcut.',go:'Enter the dream',url:'dream.html'},
+  summit:{note:'You vs 3 bots. Climb to the summit through fog, thin air, ice and one avalanche.',go:'Start the climb',url:'summit.html'}};
+let LEVEL='classic';
+try{if(LEVELS[localStorage.getItem('lw.level')])LEVEL=localStorage.getItem('lw.level')}catch(e){}
+function renderLevel(){
+  document.querySelectorAll('#levels button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.lv===LEVEL));
+  $('#seats').hidden=LEVEL!=='classic';$('#setupNote').textContent=LEVELS[LEVEL].note;$('#bStart').textContent=LEVELS[LEVEL].go;
+  $('#setup').setAttribute('aria-label',LEVEL==='classic'?"Who's playing?":'Pick a battlefield');
+}
+$('#levels').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(!b)return;LEVEL=b.dataset.lv;try{localStorage.setItem('lw.level',LEVEL)}catch(e){}renderLevel()};
+function showSetup(){pickHumans=HUMANS.slice();pickTeams=TEAMS.slice();renderSeats();renderLevel();$('#setup').hidden=false;ui()}
+$('#seats').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(!b)return;pickHumans[+b.dataset.s]=b.dataset.h==='1';renderSeats()};
+$('#seats').oninput=e=>{if(e.target.dataset&&e.target.dataset.s!=null)pickTeams[+e.target.dataset.s]=e.target.value.slice(0,14)};
+$('#bStart').onclick=()=>{
+  if(LEVELS[LEVEL].url){location.href=LEVELS[LEVEL].url;return}
+  ac();HUMANS=pickHumans.slice();TEAMS=pickTeams.map(n=>n.trim());
+  try{localStorage.setItem('lw.humans',JSON.stringify(HUMANS));localStorage.setItem('lw.teams',JSON.stringify(TEAMS))}catch(e){}
+  startGame();
+};
+
+// ---------- drawing: boards ----------
+let W=0,H=0,Bd=0,cs=0,ox=0,oy=0,dpr=1,boardCache=null;
+function buildBoard(){
+  boardCache=document.createElement('canvas');
+  boardCache.width=Math.max(1,Math.round(Bd*dpr));boardCache.height=boardCache.width;
+  const c=boardCache.getContext('2d');c.scale(dpr,dpr);
+  (LOOK==='ink'?inkBoard:toyBoard)(c);
+}
+const allCells=()=>{const out=TRACK.map((p,i)=>({c:p[0],r:p[1],idx:i}));SEATS.forEach((s,si)=>s.home.forEach(([c,r])=>out.push({c,r,home:si})));return out};
+function starPath(c,x,y,r){c.beginPath();for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,rr=k%2?r*.45:r;c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr)}c.closePath()}
+function cellSeat(cell){if(cell.home!=null)return cell.home;if(STARTS.has(cell.idx))return SEATS.findIndex(s=>s.start===cell.idx);return -1}
+
+function inkBoard(c){
+  const R=rng(11), j=a=>(R()-.5)*a;
+  c.fillStyle=PAPER;c.fillRect(0,0,Bd,Bd);
+  for(let i=0;i<Bd*Bd/80;i++){c.fillStyle=`rgba(110,85,45,${R()*.08})`;c.fillRect(R()*Bd,R()*Bd,R()*2+.4,R()*2+.4)}
+  const wash=(x,y,w,h,col,a)=>{for(let k=0;k<3;k++){const e=cs*.08;c.fillStyle=rgba(col,a*(k?.45:1));c.beginPath();
+    c.moveTo(x+j(e),y+j(e));c.lineTo(x+w+j(e),y+j(e));c.lineTo(x+w+j(e),y+h+j(e));c.lineTo(x+j(e),y+h+j(e));c.closePath();c.fill()}};
+  const ln=(x1,y1,x2,y2,lw)=>{c.lineWidth=lw||Math.max(1,cs*.045);c.beginPath();c.moveTo(x1+j(cs*.04),y1+j(cs*.04));
+    c.quadraticCurveTo((x1+x2)/2+j(cs*.06),(y1+y2)/2+j(cs*.06),x2+j(cs*.04),y2+j(cs*.04));c.stroke()};
+  const box=(x,y,w,h,lw)=>{ln(x,y,x+w,y,lw);ln(x+w,y,x+w,y+h,lw);ln(x+w,y+h,x,y+h,lw);ln(x,y+h,x,y,lw)};
+  const circ=(x,y,r)=>{for(let k=0;k<2;k++){c.lineWidth=Math.max(1,cs*(k?.03:.05));c.beginPath();c.ellipse(x+j(cs*.05),y+j(cs*.05),r+j(cs*.04),r+j(cs*.04),R()*3,0,Math.PI*2);c.stroke()}};
+  c.strokeStyle=INK;c.lineCap='round';c.lineJoin='round';
+  SEATS.forEach(s=>{
+    const[bx,by]=s.base;
+    wash(bx*cs,by*cs,6*cs,6*cs,s.ink,.4);
+    c.fillStyle=rgba('#f3ead2',.93);c.fillRect((bx+1)*cs,(by+1)*cs,4*cs,4*cs);
+    box((bx+1)*cs,(by+1)*cs,4*cs,4*cs);box(bx*cs,by*cs,6*cs,6*cs,cs*.07);
+    SLOT.forEach(([sx,sy])=>{c.fillStyle=rgba(s.ink,.28);c.beginPath();c.arc((bx+sx)*cs,(by+sy)*cs,cs*.62,0,Math.PI*2);c.fill();circ((bx+sx)*cs,(by+sy)*cs,cs*.62)});
+    c.fillStyle=INK;c.font=`${Math.round(cs*.62)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(s.name.toUpperCase(),(bx+3)*cs,(by+5.52)*cs,5.6*cs);
+  });
+  for(const cell of allCells()){
+    const x=cell.c*cs,y=cell.r*cs,si=cellSeat(cell);
+    if(si>=0)wash(x,y,cs,cs,SEATS[si].ink,.45);
+    box(x,y,cs,cs,Math.max(1,cs*.035));
+    if(cell.idx!=null&&SAFE.has(cell.idx)){
+      starPath(c,x+cs/2+j(1),y+cs/2+j(1),cs*.34);c.fillStyle=si>=0?rgba(PAPER,.7):rgba(INK,.12);c.fill();c.lineWidth=Math.max(1,cs*.04);c.stroke();
+    }
+  }
+  const m=7.5*cs,tri=[[[6,6],[6,9]],[[6,6],[9,6]],[[9,6],[9,9]],[[6,9],[9,9]]],triSeat=[1,2,3,0];
+  tri.forEach((pp,k)=>{c.beginPath();c.moveTo(pp[0][0]*cs,pp[0][1]*cs);c.lineTo(pp[1][0]*cs,pp[1][1]*cs);c.lineTo(m,m);c.closePath();
+    c.fillStyle=rgba(SEATS[triSeat[k]].ink,.5);c.fill();ln(pp[0][0]*cs,pp[0][1]*cs,m,m);ln(pp[1][0]*cs,pp[1][1]*cs,m,m)});
+  box(6*cs,6*cs,3*cs,3*cs,cs*.06);
+  box(cs*.06,cs*.06,Bd-cs*.12,Bd-cs*.12,cs*.09);
+}
+
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function toyBoard(c){
+  rr(c,0,0,Bd,Bd,cs*.55);c.fillStyle='#0e1628';c.fill();
+  const inset=cs*.14;rr(c,inset,inset,Bd-inset*2,Bd-inset*2,cs*.45);c.fillStyle='#f7f8fc';c.fill();
+  c.save();rr(c,inset,inset,Bd-inset*2,Bd-inset*2,cs*.45);c.clip();
+  SEATS.forEach(s=>{
+    const[bx,by]=s.base;
+    c.fillStyle=s.toy;c.fillRect(bx*cs,by*cs,6*cs,6*cs);
+    const g=c.createLinearGradient(0,by*cs,0,(by+6)*cs);g.addColorStop(0,'rgba(255,255,255,.18)');g.addColorStop(1,'rgba(0,0,0,.14)');
+    c.fillStyle=g;c.fillRect(bx*cs,by*cs,6*cs,6*cs);
+    rr(c,(bx+.85)*cs,(by+.85)*cs,4.3*cs,4.3*cs,cs*.55);c.fillStyle='rgba(0,0,0,.18)';c.fill();
+    rr(c,(bx+.85)*cs,(by+.75)*cs,4.3*cs,4.3*cs,cs*.55);c.fillStyle='#ffffff';c.fill();
+    SLOT.forEach(([sx,sy])=>{
+      const x=(bx+sx)*cs,y=(by+sy-.05)*cs;
+      c.beginPath();c.arc(x,y,cs*.66,0,Math.PI*2);c.fillStyle=mix(s.toy,'#000000',.22);c.fill();
+      c.beginPath();c.arc(x,y-cs*.04,cs*.6,0,Math.PI*2);c.fillStyle=s.toy;c.fill();
+      c.beginPath();c.arc(x,y,cs*.42,0,Math.PI*2);c.fillStyle=mix(s.toy,'#000000',.12);c.fill();
+    });
+    c.fillStyle='#ffffff';c.font=`700 ${Math.round(cs*.5)}px Fredoka,system-ui,sans-serif`;c.textAlign='center';c.textBaseline='middle';
+    c.shadowColor='rgba(0,0,0,.3)';c.shadowOffsetY=cs*.04;c.fillText(s.name.toUpperCase(),(bx+3)*cs,(by+5.5)*cs);c.shadowColor='transparent';
+  });
+  for(const cell of allCells()){
+    const x=cell.c*cs,y=cell.r*cs,si=cellSeat(cell);
+    c.fillStyle=si>=0?SEATS[si].toy:'#ffffff';c.fillRect(x,y,cs,cs);
+    c.strokeStyle='#cfd5e3';c.lineWidth=Math.max(1,cs*.04);c.strokeRect(x,y,cs,cs);
+    if(cell.idx!=null&&SAFE.has(cell.idx)){starPath(c,x+cs/2,y+cs/2,cs*.34);c.fillStyle=si>=0?'rgba(255,255,255,.8)':'#c3cadb';c.fill()}
+  }
+  const m=7.5*cs,tri=[[[6,6],[6,9]],[[6,6],[9,6]],[[9,6],[9,9]],[[6,9],[9,9]]],triSeat=[1,2,3,0];
+  tri.forEach((pp,k)=>{c.beginPath();c.moveTo(pp[0][0]*cs,pp[0][1]*cs);c.lineTo(pp[1][0]*cs,pp[1][1]*cs);c.lineTo(m,m);c.closePath();
+    c.fillStyle=SEATS[triSeat[k]].toy;c.fill();c.strokeStyle='#ffffff';c.lineWidth=cs*.06;c.stroke()});
+  c.restore();
+}
+
+// ---------- drawing: soldiers ----------
+function inkSoldier(c,h,col,o){
+  const boil=Math.floor(S.rt*8), J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.04;
+  const lw=Math.max(1.3,h*.075);
+  c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;
+  if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.32,h*.1,0,0,Math.PI*2);c.fill()}
+  const sw=Math.sin(o.legs*Math.PI*2)*h*.1;
+  const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+  L(J(1),-h*.38,-h*.12+sw+J(2),0);L(J(1),-h*.38,h*.12-sw+J(3),0);
+  // a sulking soldier (walk of shame) hunches, drags his rifle behind him and hangs his head
+  const nx=o.sulk?h*.09:J(4);
+  L(J(1),-h*.38,nx,-h*.66);
+  if(o.sulk){L(nx*.6,-h*.5,-h*.4+J(5),-h*.03,lw*1.25);L(nx,-h*.62,nx*.6,-h*.5);L(nx,-h*.62,h*.04,-h*.4)}
+  else{L(-h*.2+J(5),-h*.36,h*.27+J(6),-h*.84,lw*1.25);L(J(4),-h*.63,-h*.1,-h*.44);L(J(4),-h*.63,h*.13,-h*.62)}
+  if(o.chute)inkChute(c,h,col,lw);
+  const hy=-h*(o.sulk?.74:.8)+J(7)*.3, hr=h*.12;
+  if(o.sulk){c.save();c.translate(nx+h*.04,hy);c.rotate(.45);c.translate(0,-hy)}
+  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(J(7)*.3,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  c.beginPath();c.arc(0,hy-hr*.15,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
+  L(-hr*1.45,hy-hr*.12,hr*1.45,hy-hr*.12,lw*.9);
+  if(o.soot){c.strokeStyle=rgba(INK,.45);c.lineWidth=lw*.6;for(let k=0;k<2;k++){const sx=(k?.08:-.06)*h,ph=S.rt*2+k*2+o.seed;
+    c.beginPath();c.moveTo(sx,hy-hr*1.6);c.quadraticCurveTo(sx+Math.sin(ph)*h*.08,hy-hr*2.4,sx+Math.sin(ph+1)*h*.05,hy-hr*3.1);c.stroke()}c.strokeStyle=INK}
+  eyes(c,hy,hr,o,o.soot?PAPER:INK);
+  if(o.sulk)c.restore();
+}
+// squad up: the carrier takes the rider on his shoulders. Bowed knees shake (worse while walking), sweat flies, both hands
+// grip the rider's ankles. The rider sways, kicks, waves forward, and his helmet keeps sliding down over his eyes.
+function inkSquad(c,h,col,o){
+  const boil=Math.floor(S.rt*8),J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.035;
+  const lw=Math.max(1.3,h*.075),tr=Math.sin(S.rt*42+o.seed)*h*(o.walk?.04:.02);
+  const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+  c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;
+  if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.36,h*.11,0,0,Math.PI*2);c.fill()}
+  // carrier legs: bowed out at the knee, trembling
+  const sw=Math.sin(o.legs*Math.PI*2)*h*.07,hip=-h*.34,neck=-h*.6;
+  L(0,hip,-h*.16+tr,-h*.17);L(-h*.16+tr,-h*.17,-h*.11+sw+J(1),0);
+  L(0,hip,h*.16-tr,-h*.17);L(h*.16-tr,-h*.17,h*.11-sw+J(2),0);
+  L(0,hip,tr*.4,neck);
+  // rider sits just behind the carrier's head
+  const sway=Math.sin(S.rt*4.3+o.seed)*.13+(o.walk?Math.sin(o.legs*Math.PI*2)*.14:0);
+  const seatY=-h*.92,cs_=Math.cos(sway),sn=Math.sin(sway),W2=(x,y)=>[x*cs_-y*sn,seatY+x*sn+y*cs_];
+  // thighs go out over the carrier's shoulders, shins hang down beside his head; his hands hold the shins
+  const kick=Math.sin(S.rt*7.5+o.seed)*h*.05,gripL=W2(-h*.22+kick*.5,h*.25),gripR=W2(h*.22-kick*.5,h*.25);
+  c.save();c.translate(0,seatY);c.rotate(sway);
+  L(0,0,-h*.21,h*.12);L(-h*.21,h*.12,-h*.23+kick,h*.36);
+  L(0,0,h*.21,h*.12);L(h*.21,h*.12,h*.23-kick,h*.36);
+  L(0,0,J(3),-h*.27);
+  const wave=Math.sin(S.rt*9+o.seed)*.55;
+  L(0,-h*.22,Math.cos(-2.3+wave)*h*.22,-h*.22+Math.sin(-2.3+wave)*h*.22);
+  L(0,-h*.22,h*.27,-h*.3);
+  const rhy=-h*.4,hr=h*.12,slip=clamp((Math.sin(S.rt*1.1+o.seed)-.35)*2.2,0,1);
+  c.fillStyle=PAPER;c.beginPath();c.arc(0,rhy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  if(slip<.5)eyes(c,rhy,hr,{},INK);
+  const hel=rhy-hr*.15+slip*hr*.8;
+  c.beginPath();c.arc(0,hel,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=seatCol(o.rider.seat);c.fill();c.lineWidth=lw*.9;c.stroke();
+  L(-hr*1.45,hel-hr*.12,hr*1.45,hel-hr*.12,lw*.9);
+  c.restore();
+  // carrier arms up to the rider's ankles, then his strained head between the rider's knees
+  L(tr*.4,neck+h*.03,gripL[0],gripL[1]);L(tr*.4,neck+h*.03,gripR[0],gripR[1]);
+  const hy=-h*.74+tr*.3,hr2=h*.12;
+  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(tr*.3,hy,hr2,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  c.beginPath();c.arc(tr*.3,hy-hr2*.15,hr2*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
+  // squeezed-shut eyes and gritted teeth
+  c.strokeStyle=o.soot?PAPER:INK;c.lineWidth=Math.max(1,hr2*.22);
+  [-1,1].forEach(s2=>{const ex=s2*hr2*.35+hr2*.22,ey=hy+hr2*.15;c.beginPath();c.moveTo(ex-hr2*.18,ey-hr2*.1*s2);c.lineTo(ex+hr2*.18,ey+hr2*.1*s2);c.stroke()});
+  c.beginPath();c.moveTo(hr2*.05,hy+hr2*.6);c.lineTo(hr2*.55,hy+hr2*.55);c.stroke();c.strokeStyle=INK;
+  // sweat drops fly off both sides
+  for(let k=0;k<2;k++){
+    const ph=(S.rt*(o.walk?1.8:1.1)+k*.5+o.seed*.13)%1,s2=k?1:-1;
+    const dx=s2*(hr2*1.1+ph*h*.18),dy=hy-hr2*.6-Math.sin(ph*Math.PI)*h*.12+ph*h*.1;
+    c.globalAlpha=1-ph;c.fillStyle='#7fb2d9';c.beginPath();c.arc(dx,dy,h*.03,0,Math.PI*2);c.fill();c.globalAlpha=1;
+  }
+}
+function inkChute(c,h,col,lw){
+  const cy=-h*1.75,cw=h*.75;
+  c.beginPath();c.moveTo(-cw,cy);c.quadraticCurveTo(0,cy-h*.8,cw,cy);
+  c.quadraticCurveTo(cw*.5,cy-h*.12,0,cy);c.quadraticCurveTo(-cw*.5,cy-h*.12,-cw,cy);c.closePath();
+  c.fillStyle=rgba(col,.55);c.fill();c.lineWidth=lw*.8;c.stroke();
+  c.lineWidth=lw*.5;[-cw,0,cw].forEach(x=>{c.beginPath();c.moveTo(x,cy);c.lineTo(x*.15,-h*.66);c.stroke()});
+}
+function eyes(c,hy,hr,o,colr){
+  c.fillStyle=colr;c.strokeStyle=colr;
+  if(o.dazed){c.lineWidth=Math.max(1,hr*.25);[-1,1].forEach(s=>{const x=s*hr*.38+hr*.2,y=hy+hr*.15,d=hr*.18;
+    c.beginPath();c.moveTo(x-d,y-d);c.lineTo(x+d,y+d);c.moveTo(x+d,y-d);c.lineTo(x-d,y+d);c.stroke()})}
+  else[-1,1].forEach(s=>{c.beginPath();c.arc(s*hr*.35+hr*.22,hy+hr*.18,Math.max(.8,hr*.14),0,Math.PI*2);c.fill()});
+}
+function toySoldier(c,h,col,o){
+  const dark=mix(col,'#000000',.35), mid=mix(col,'#000000',.15), light=mix(col,'#ffffff',.45);
+  if(o.shadow){c.fillStyle='rgba(0,0,0,.25)';c.beginPath();c.ellipse(h*.04,h*.03,h*.33,h*.1,0,0,Math.PI*2);c.fill()}
+  c.fillStyle=dark;c.beginPath();c.ellipse(0,0,h*.29,h*.1,0,0,Math.PI*2);c.fill();
+  c.fillStyle=col;c.beginPath();c.ellipse(0,-h*.035,h*.27,h*.085,0,0,Math.PI*2);c.fill();
+  const sw=Math.sin(o.legs*Math.PI*2)*h*.07;
+  c.fillStyle=mid;rr(c,-h*.14+sw*.4,-h*.42,h*.12,h*.4,h*.05);c.fill();rr(c,h*.02-sw*.4,-h*.42,h*.12,h*.4,h*.05);c.fill();
+  const g=c.createLinearGradient(-h*.18,0,h*.18,0);g.addColorStop(0,light);g.addColorStop(.45,col);g.addColorStop(1,dark);
+  c.fillStyle=g;rr(c,-h*.18,-h*.69,h*.36,h*.33,h*.09);c.fill();
+  c.save();c.translate(h*.02,-h*.56);c.rotate(-.9);c.fillStyle=dark;rr(c,-h*.3,-h*.035,h*.62,h*.07,h*.03);c.fill();c.restore();
+  c.fillStyle=mid;c.beginPath();c.arc(-h*.1,-h*.5,h*.06,0,Math.PI*2);c.arc(h*.13,-h*.64,h*.06,0,Math.PI*2);c.fill();
+  if(o.chute)toyChute(c,h,col);
+  const hy=-h*.8,hr=h*.13;
+  const hg=c.createRadialGradient(-hr*.4,hy-hr*.4,hr*.1,0,hy,hr*1.2);hg.addColorStop(0,light);hg.addColorStop(1,col);
+  c.fillStyle=hg;c.beginPath();c.arc(0,hy,hr,0,Math.PI*2);c.fill();
+  c.fillStyle=mid;c.beginPath();c.arc(0,hy-hr*.12,hr*1.25,Math.PI,Math.PI*2);c.closePath();c.fill();
+  c.fillStyle=dark;rr(c,-hr*1.45,hy-hr*.2,hr*2.9,hr*.32,hr*.15);c.fill();
+  c.fillStyle='rgba(255,255,255,.55)';c.beginPath();c.ellipse(-hr*.55,hy-hr*.75,hr*.4,hr*.18,-.4,0,Math.PI*2);c.fill();
+  eyes(c,hy,hr,o,'#1a1f2e');
+}
+function toyChute(c,h,col){
+  const cy=-h*1.75,cw=h*.78;
+  c.beginPath();c.moveTo(-cw,cy);c.quadraticCurveTo(0,cy-h*.85,cw,cy);c.closePath();
+  const g=c.createLinearGradient(-cw,0,cw,0);for(let k=0;k<6;k++){g.addColorStop(k/6,k%2?'#ffffff':col);g.addColorStop((k+1)/6-.001,k%2?'#ffffff':col)}
+  c.fillStyle=g;c.fill();c.strokeStyle=mix(col,'#000000',.35);c.lineWidth=Math.max(1,h*.03);c.stroke();
+  [-cw,0,cw].forEach(x=>{c.beginPath();c.moveTo(x,cy);c.lineTo(x*.15,-h*.66);c.stroke()});
+}
+
+// ---------- drawing: frame ----------
+// the rider sits on its partner's shoulders: raised clear of the head and a touch to the side
+const RIDE_Y=.62,RIDE_X=0;
+function layout(){
+  sweepStacks();
+  const groups=new Map();
+  for(const t of S.tokens){
+    if(t.anim||(t.mate&&t.top)){t.key=null;continue}
+    const key=t.p>=0&&t.p<=50?'t'+idxOf(t):t.p>50&&t.p<56?'h'+t.seat+'_'+t.p:null;
+    if(key){if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t)}
+    t.key=key;
+  }
+  for(const t of S.tokens){
+    let x,y,sc=1,rot=0,legs=0,chute=false;
+    if(t.anim){const a=animPos(t);x=a.x;y=a.y;rot=a.rot||0;legs=a.legs||0;chute=!!a.chute}
+    else{
+      const p=posOf(t);x=p.x;y=p.y;
+      if(t.p===56)sc=.55;
+      const g=t.key&&groups.get(t.key);
+      if(g&&g.length>1){const k=g.indexOf(t),n=g.length;if(!t.flat){x+=(k-(n-1)/2)*.28;y+=(k-(n-1)/2)*.08}sc=.8}
+    }
+    if(t.anim&&t.mate&&t.top){y-=RIDE_Y;x+=RIDE_X}
+    Object.assign(t,{dx:x,dy:y,sc,rot,legs,chute});
+  }
+  for(const t of S.tokens)if(t.mate&&t.top&&!t.anim){const b=t.mate;Object.assign(t,{dx:b.dx+RIDE_X*b.sc,dy:b.dy-RIDE_Y*b.sc,sc:b.sc,rot:0,legs:0,chute:false})}
+}
+// a stack is drawn as one figure: the carrier draws its rider (both standing, or hopping together)
+const together=t=>t.mate&&(!t.anim||t.anim.kind==='hop')&&(!t.mate.anim||t.mate.anim.kind==='hop');
+function drawToken(t){
+  if(t.hidden||(t.top&&together(t)))return;
+  const x=ox+t.dx*cs,y=oy+(t.dy+.3)*cs,h=cs*.86*t.sc;
+  const col=seatCol(t.seat);
+  let sx=1,sy=1,lift=0;
+  const lk=(S.gt-t.landT)/.18;
+  if(lk>=0&&lk<1){const q=Math.sin(lk*Math.PI)*.2;sx=1+q;sy=1-q}
+  if(t.flat){const k=clamp((S.gt-t.flatT)/.08,0,1);sx=1+.7*k;sy=1-.8*k}
+  const selectable=S.selectable.includes(t);
+  if(selectable)lift=Math.abs(Math.sin(S.rt*6+t.i))*cs*.14;
+  else if(!t.anim&&!t.flat&&t.seat===S.turn&&t.p<56&&!S.over)lift=Math.abs(Math.sin(S.rt*3+t.seed))*cs*.03;
+  let idle=t.anim||t.flat?0:Math.sin(S.rt*2+t.seed)*.04;
+  const shamed=t.anim&&t.anim.kind==='shame';
+  if(shamed)idle=.07*t.face;
+  if(together(t))idle=Math.sin(S.rt*3.1+t.seed)*.05+(t.anim?Math.sin(t.legs*Math.PI*2)*.09:0);
+  const tk=(S.gt-t.tantrumT)/.9;
+  if(tk>=0&&tk<1&&!t.anim){lift+=Math.abs(Math.sin(tk*Math.PI*6))*cs*.14;idle+=Math.sin(tk*40)*.22}
+  ctx.save();ctx.translate(x,y);
+  if(!t.anim&&!t.flat){
+    if(selectable){
+      ctx.strokeStyle=LOOK==='ink'?INK:'#ffffff';ctx.lineWidth=Math.max(1.5,cs*.06);
+      const pr=1+Math.sin(S.rt*6)*.12;ctx.beginPath();ctx.ellipse(0,0,cs*.42*pr,cs*.15*pr,0,0,Math.PI*2);ctx.stroke();
+    }
+  }
+  ctx.translate(0,-lift);
+  if(t.rot){ctx.translate(0,-h*.45);ctx.rotate(t.rot);ctx.translate(0,h*.45)}else ctx.rotate(idle);
+  ctx.scale(sx*t.face,sy);
+  const o={seed:t.seed,legs:t.legs,shadow:!t.anim||shamed||t.anim.kind==='hop',dazed:!!t.flat||(t.anim&&!shamed&&t.anim.kind!=='hop')||S.gt-(t.dazeT??-9)<1.1,chute:t.chute,soot:t.soot,
+    walk:!!t.anim,rider:together(t)?t.mate:null,sulk:shamed};
+  (o.rider&&LOOK==='ink'?inkSquad:LOOK==='ink'?inkSoldier:toySoldier)(ctx,h,col,o);
+  for(let k=0;k<(t.splat||0);k++){const sx=(hash(t.seed+k*3.7)-.5)*h*.3,sy=-h*(.35+hash(t.seed*1.3+k)*.5);
+    ctx.fillStyle=k%3===2?'#f2d24b':'#c8402f';ctx.beginPath();ctx.arc(sx,sy,h*(.045+hash(k+t.seed)*.03),0,Math.PI*2);ctx.fill()}
+  if(t.p>=0&&t.p<=50&&!t.anim)S.grudges.filter(g=>g.target===t).forEach((g,k)=>drawMark(h,g,k));
+  if(S.retreat&&S.retreat.tok===t&&!t.anim){
+    // backwards arrow over the head: points against the soldier's facing
+    ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1.5,h*.07);ctx.lineCap='round';
+    const ay=-h*1.25+Math.sin(S.rt*5)*h*.04;
+    ctx.beginPath();ctx.moveTo(h*.25,ay);ctx.lineTo(-h*.25,ay);ctx.moveTo(-h*.1,ay-h*.12);ctx.lineTo(-h*.26,ay);ctx.lineTo(-h*.1,ay+h*.12);ctx.stroke();
+  }
+  ctx.restore();
+}
+// a crosshair in the hunter's colour that circles the marked soldier's head
+function drawMark(h,g,k){
+  const grow=clamp((S.rt-g.t0)/.3,0,1),r=h*(.38+k*.09)*(2-grow),cy=-h*.8;
+  ctx.save();ctx.translate(0,cy);ctx.rotate(S.rt*1.5*(k%2?-1:1));
+  ctx.globalAlpha=grow;ctx.strokeStyle=seatCol(g.hunter);ctx.lineWidth=Math.max(1.5,h*.07);ctx.lineCap='round';
+  for(let q=0;q<4;q++){
+    const a=q*Math.PI/2;
+    ctx.beginPath();ctx.arc(0,0,r,a+.25,a+Math.PI/2-.25);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.7,Math.sin(a)*r*.7);ctx.lineTo(Math.cos(a)*r*1.3,Math.sin(a)*r*1.3);ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawParts(){
+  const g=9;
+  S.parts=S.parts.filter(p=>S.gt-p.t0<p.life);
+  for(const p of S.parts){
+    const t=S.gt-p.t0,k=t/p.life,x=ox+(p.x+p.vx*t)*cs,y=oy+(p.y+p.vy*t+(p.kind==='dust'?0:.5*g*t*t*.3))*cs;
+    ctx.globalAlpha=1-k;
+    if(p.kind==='dust'){ctx.fillStyle=LOOK==='ink'?rgba(INK,.25):'rgba(255,255,255,.6)';ctx.beginPath();ctx.arc(x,y,cs*p.r*(1+k*2),0,Math.PI*2);ctx.fill()}
+    else if(p.kind==='star'){ctx.save();ctx.translate(x,y);ctx.rotate(p.spin*t);starPath(ctx,0,0,cs*p.r*2);ctx.fillStyle=LOOK==='ink'?INK:'#ffe14a';ctx.fill();ctx.restore()}
+    else{ctx.fillStyle=p.col||(LOOK==='ink'?(Math.random()<.5?INK:seatCol(p.seat)):seatCol(p.seat));ctx.beginPath();ctx.arc(x,y,cs*p.r,0,Math.PI*2);ctx.fill()}
+  }
+  ctx.globalAlpha=1;
+}
+function drawPops(){
+  S.pops=S.pops.filter(p=>S.rt-p.t0<1.2);
+  for(const p of S.pops){
+    const t=S.rt-p.t0,s=t<.15?t/.15*1.3:t<.25?1.3-(t-.15)*3:1,a=t>.9?1-(t-.9)/.3:1;
+    ctx.save();ctx.globalAlpha=a;ctx.translate(ox+p.x*cs,oy+p.y*cs);ctx.rotate(-.12);ctx.scale(s*p.size,s*p.size);
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    if(LOOK==='ink'){ctx.font=`${Math.round(cs*1.05)}px "Patrick Hand",cursive`;ctx.lineWidth=cs*.22;ctx.strokeStyle=PAPER;ctx.strokeText(p.text,0,0);ctx.fillStyle=INK;ctx.fillText(p.text,0,0);
+      ctx.fillStyle=rgba(seatCol(p.seat),.6);ctx.fillText(p.text,cs*.05,cs*.05)}
+    else{ctx.font=`700 ${Math.round(cs*.95)}px Fredoka,sans-serif`;ctx.lineWidth=cs*.2;ctx.strokeStyle='#131a2c';ctx.strokeText(p.text,0,0);ctx.fillStyle='#ffd52e';ctx.fillText(p.text,0,0)}
+    ctx.restore();
+  }
+}
+function wrap(text,maxW){
+  const words=text.split(' '),lines=[];let cur='';
+  for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t}
+  if(cur)lines.push(cur);return lines;
+}
+function drawBubbles(){
+  S.bubbles=S.bubbles.filter(b=>S.rt-b.t0<b.dur);
+  const fs=Math.max(13,Math.round(cs*.46));
+  ctx.font=LOOK==='ink'?`${fs}px "Patrick Hand",cursive`:`500 ${fs}px Fredoka,sans-serif`;
+  for(const b of S.bubbles){
+    const t=b.tok,age=S.rt-b.t0,a=age<.12?age/.12:age>b.dur-.3?(b.dur-age)/.3:1;
+    const tx=ox+t.dx*cs,ty=oy+(t.dy+.3)*cs-cs*.86*t.sc-(t.chute?cs*1.1:0);
+    const maxW=Math.min(W*.62,Math.max(150,cs*5.4)),lines=wrap(b.text,maxW-20);
+    const w=Math.max(...lines.map(l=>ctx.measureText(l).width))+20,hh=lines.length*fs*1.15+12;
+    let bx=clamp(tx-w/2,4,W-w-4),by=ty-hh-12,below=false;
+    if(by<4){by=oy+(t.dy+.3)*cs+10;below=true}
+    ctx.globalAlpha=clamp(a,0,1);
+    const ink=LOOK==='ink';
+    ctx.fillStyle=ink?PAPER:'#ffffff';ctx.strokeStyle=ink?INK:'#131a2c';ctx.lineWidth=ink?Math.max(1.5,cs*.05):2;
+    rr(ctx,bx,by,w,hh,ink?6:10);ctx.fill();ctx.stroke();
+    const ax=clamp(tx,bx+12,bx+w-12);ctx.beginPath();
+    if(below){ctx.moveTo(ax-7,by+1);ctx.lineTo(ax,by-9);ctx.lineTo(ax+7,by+1)}else{ctx.moveTo(ax-7,by+hh-1);ctx.lineTo(ax,by+hh+9);ctx.lineTo(ax+7,by+hh-1)}
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle=ink?INK:'#131a2c';ctx.textAlign='left';ctx.textBaseline='top';
+    lines.forEach((l,k)=>ctx.fillText(l,bx+10,by+6+k*fs*1.15));
+    ctx.fillStyle=seatCol(t.seat);ctx.fillRect(bx+(ink?3:4),by+5,3,hh-10);
+    ctx.globalAlpha=1;
+  }
+}
+function drawTurnGlow(){
+  if(S.over)return;
+  const[bx,by]=SEATS[S.turn].base,p=.5+.5*Math.sin(S.rt*4);
+  ctx.strokeStyle=LOOK==='ink'?rgba(INK,.35+.4*p):rgba('#ffffff',.4+.5*p);
+  ctx.lineWidth=Math.max(2,cs*(LOOK==='ink'?.08:.1));
+  ctx.setLineDash(LOOK==='ink'?[cs*.3,cs*.2]:[]);
+  rr(ctx,ox+(bx+.3)*cs,oy+(by+.3)*cs,5.4*cs,5.4*cs,cs*.3);ctx.stroke();ctx.setLineDash([]);
+}
+// chalk outline + epitaph where a soldier fell; purely visual, fades after ~14 s, max 3 on the board
+function drawEpitaphs(){
+  S.epitaphs=S.epitaphs.filter(e=>S.rt-e.t0<14);
+  const fs=Math.max(11,Math.round(cs*.36));
+  for(const e of S.epitaphs){
+    const age=S.rt-e.t0,a=age<.6?age/.6:age>12?(14-age)/2:1,x=ox+e.x*cs,y=oy+e.y*cs,L=cs*.34;
+    ctx.save();ctx.globalAlpha=.5*a;ctx.translate(x,y+cs*.12);ctx.rotate(e.rot);
+    ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1,cs*.035);ctx.setLineDash([cs*.06,cs*.05]);ctx.lineCap='round';
+    ctx.beginPath();ctx.arc(-L,0,cs*.1,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-L+cs*.1,0);ctx.lineTo(L*.35,0);ctx.lineTo(L,-cs*.13);ctx.moveTo(L*.35,0);ctx.lineTo(L,cs*.13);
+    ctx.moveTo(-L*.45,0);ctx.lineTo(-L*.1,-cs*.17);ctx.moveTo(-L*.45,0);ctx.lineTo(-L*.1,cs*.17);ctx.stroke();
+    ctx.restore();
+    ctx.save();ctx.globalAlpha=.92*a;ctx.font=`${fs}px "Patrick Hand",cursive`;
+    const lines=wrap(e.text,Math.max(110,cs*4.2)),w=Math.max(...lines.map(l=>ctx.measureText(l).width))+10,hh=lines.length*fs*1.1+6;
+    const bx=clamp(x-w/2,ox+2,ox+Bd-w-2),by=clamp(y-cs*.55-hh,oy+2,oy+Bd-hh-2);
+    ctx.fillStyle=rgba(PAPER,.85);ctx.fillRect(bx,by,w,hh);
+    ctx.strokeStyle=rgba(INK,.45);ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.strokeRect(bx+.5,by+.5,w-1,hh-1);ctx.setLineDash([]);
+    ctx.fillStyle=rgba(INK,.8);ctx.textAlign='left';ctx.textBaseline='top';
+    lines.forEach((l,k)=>ctx.fillText(l,bx+5,by+3+k*fs*1.1));
+    ctx.restore();
+  }
+}
+// the brawl: a boiling paper cloud with fists and boots poking out and helmets tumbling inside
+function drawBrawl(){
+  const b=S.brawl;if(!b)return;
+  const k=(S.gt-b.t0)/b.dur,R=rng(Math.floor(S.rt*14)*7+1),r=cs*.66*(k<.1?k/.1:1);
+  ctx.save();ctx.translate(ox+b.x*cs+(R()-.5)*cs*.1,oy+(b.y-.15)*cs);
+  ctx.strokeStyle=INK;ctx.lineCap='round';ctx.lineWidth=Math.max(1.5,cs*.06);
+  for(let i=0;i<5;i++){const a=R()*Math.PI*2,l=r*(1.2+R()*.4),ex=Math.cos(a)*l,ey=Math.sin(a)*l*.85;
+    ctx.beginPath();ctx.moveTo(ex*.5,ey*.5);ctx.lineTo(ex,ey);ctx.stroke();
+    ctx.fillStyle=R()<.5?INK:PAPER;ctx.beginPath();ctx.arc(ex,ey,cs*.085,0,Math.PI*2);ctx.fill();ctx.stroke()}
+  ctx.fillStyle=PAPER;
+  for(let i=0;i<8;i++){const a=i/8*Math.PI*2+R()*.4,d=r*.55;ctx.beginPath();ctx.arc(Math.cos(a)*d,Math.sin(a)*d*.8,r*(.42+R()*.15),0,Math.PI*2);ctx.fill();ctx.stroke()}
+  ctx.beginPath();ctx.arc(0,0,r*.62,0,Math.PI*2);ctx.fill();
+  b.seats.forEach(s=>{const a=R()*Math.PI*2,d=r*.32*R();ctx.save();ctx.translate(Math.cos(a)*d,Math.sin(a)*d);ctx.rotate((R()-.5)*2);
+    ctx.fillStyle=seatCol(s);ctx.beginPath();ctx.arc(0,0,cs*.13,Math.PI,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()});
+  for(let i=0;i<2;i++){starPath(ctx,(R()-.5)*r,(R()-.5)*r*.8,cs*.1);ctx.fillStyle=INK;ctx.fill()}
+  ctx.restore();
+}
+function drawThrows(){
+  for(const p of S.throws){
+    const k=clamp((S.gt-p.t0)/p.dur,0,1),t=p.tgt,x=ox+lerp(p.x,t.dx,k)*cs,y=oy+(lerp(p.y,t.dy-.6,k)-Math.sin(Math.PI*k)*1.1)*cs;
+    ctx.save();ctx.translate(x,y);ctx.rotate(p.spin*k);ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1,cs*.03);
+    if(p.kind==='tomato'){ctx.fillStyle='#c8402f';ctx.beginPath();ctx.arc(0,0,cs*.12,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#4f8a3a';ctx.fillRect(-cs*.04,-cs*.15,cs*.08,cs*.05)}
+    else if(p.kind==='egg'){ctx.fillStyle='#fbf6e6';ctx.beginPath();ctx.ellipse(0,0,cs*.08,cs*.11,0,0,Math.PI*2);ctx.fill();ctx.stroke()}
+    else{ctx.fillStyle=INK;ctx.beginPath();ctx.moveTo(-cs*.1,-cs*.12);ctx.lineTo(-cs*.02,-cs*.12);ctx.lineTo(-cs*.02,0);ctx.lineTo(cs*.13,0);ctx.lineTo(cs*.13,cs*.06);ctx.lineTo(-cs*.1,cs*.06);ctx.closePath();ctx.fill()}
+    ctx.restore();
+  }
+}
+function drawMystery(){for(const m of MYSTERIES)drawMysteryAt(m)}
+function drawMysteryAt(m){
+  const[c,r]=TRACK[m],x=ox+(c+.5)*cs,y=oy+(r+.5)*cs;
+  ctx.fillStyle=rgba(INK,.1+.06*Math.sin(S.rt*3));ctx.fillRect(ox+c*cs+2,oy+r*cs+2,cs-4,cs-4);
+  ctx.strokeStyle=rgba(INK,.7);ctx.lineWidth=Math.max(1,cs*.04);ctx.setLineDash([cs*.12,cs*.08]);
+  ctx.strokeRect(ox+c*cs+cs*.1,oy+r*cs+cs*.1,cs*.8,cs*.8);ctx.setLineDash([]);
+  ctx.fillStyle=INK;ctx.font=`${Math.round(cs*.85)}px "Patrick Hand",cursive`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('?',x,y+Math.sin(S.rt*2.5)*cs*.06);
+}
+function drawCrate(){
+  if(!S.crate)return;
+  const k=clamp((S.gt-S.crate.t0)/.45,0,1),x=ox+S.crate.x*cs,y=oy+(S.crate.y-.2-7*(1-k*k))*cs,z=cs*.62;
+  ctx.save();ctx.translate(x,y);ctx.rotate((1-k)*.4);
+  ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1,cs*.05);
+  if(k<.9){ctx.beginPath();ctx.moveTo(-z*.5,-z*.5);ctx.lineTo(0,-z*1.6);ctx.lineTo(z*.5,-z*.5);ctx.stroke();
+    ctx.beginPath();ctx.arc(0,-z*1.6,z*.75,Math.PI,0);ctx.closePath();ctx.fillStyle=PAPER;ctx.fill();ctx.stroke()}
+  ctx.fillStyle='#c79a5b';ctx.fillRect(-z/2,-z/2,z,z);ctx.strokeRect(-z/2,-z/2,z,z);
+  ctx.beginPath();ctx.moveTo(-z/2,-z/2);ctx.lineTo(z/2,z/2);ctx.moveTo(z/2,-z/2);ctx.lineTo(-z/2,z/2);ctx.stroke();
+  ctx.restore();
+}
+function drawBombs(){
+  for(const b of S.bombs){
+    const[c,r]=TRACK[b.idx];
+    if(b.fuse===1){
+      const p=.5+.5*Math.sin(S.rt*10);ctx.fillStyle=rgba('#c0392b',.12+.2*p);
+      BLAST(b.idx).forEach(i=>{if(SAFE.has(i))return;const[cc,rc]=TRACK[i];ctx.fillRect(ox+cc*cs+2,oy+rc*cs+2,cs-4,cs-4)});
+    }
+    const drop=clamp((S.gt-b.t0)/.3,0,1),x=ox+(c+.74)*cs,y=oy+(r+.7)*cs-(1-drop)*cs*2;
+    const R=cs*.29*(b.fuse===1?1+.1*Math.sin(S.rt*14):1)*(S.gt-b.tickT<.2?1.2:1);
+    ctx.save();ctx.translate(x,y);
+    ctx.fillStyle=rgba(seatCol(b.seat),.55);ctx.beginPath();ctx.ellipse(0,R*.95,R*1.15,R*.35,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=INK;ctx.beginPath();ctx.arc(0,0,R,0,Math.PI*2);ctx.fill();ctx.fillRect(-R*.28,-R*1.22,R*.56,R*.4);
+    ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1.2,cs*.04);ctx.beginPath();ctx.moveTo(0,-R*1.15);ctx.quadraticCurveTo(R*.5,-R*1.9,R*.95,-R*1.55);ctx.stroke();
+    const fl=hash(Math.floor(S.rt*20)+b.idx);starPath(ctx,R*.95,-R*1.55,R*(.35+fl*.3));ctx.fillStyle=fl>.5?'#e3702a':'#f0b233';ctx.fill();
+    ctx.fillStyle=PAPER;ctx.font=`${Math.round(R*1.35)}px "Patrick Hand",cursive`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(b.fuse,0,R*.1);
+    ctx.restore();
+  }
+}
+function drawWin(){
+  if(!S.over)return;
+  const ink=LOOK==='ink',y=oy+7.5*cs;
+  const rv=S.rivalTop&&S.rivalTop.n>=3,bh=rv?3.9:2.8;
+  ctx.fillStyle=ink?rgba(PAPER,.92):'rgba(14,22,40,.88)';ctx.fillRect(ox,y-cs*1.4,Bd,cs*bh);
+  ctx.strokeStyle=ink?INK:seatCol(S.winner);ctx.lineWidth=3;ctx.strokeRect(ox+2,y-cs*1.4,Bd-4,cs*bh);
+  if(rv){
+    const r=S.rivalTop;
+    ctx.fillStyle=INK;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${Math.round(cs*.48)}px "Patrick Hand",cursive`;
+    ctx.fillText(`Most toxic relationship: Pvt. ${r.a.name} (${SEATS[r.a.seat].name}) vs Pvt. ${r.b.name} (${SEATS[r.b.seat].name}), ${r.n} captures`,ox+Bd/2,y+cs*1.75,Bd-cs*.6);
+  }
+  ctx.fillStyle=ink?INK:'#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font=ink?`${Math.round(cs*1.1)}px "Patrick Hand",cursive`:`700 ${Math.round(cs*1)}px Fredoka,sans-serif`;
+  ctx.fillText(isHuman(S.winner)&&soloHuman()?'You win the war!':`${SEATS[S.winner].name} wins the war`,ox+Bd/2,y-cs*.3);
+  ctx.font=ink?`${Math.round(cs*.55)}px "Patrick Hand",cursive`:`500 ${Math.round(cs*.5)}px Fredoka,sans-serif`;
+  ctx.fillText('Press New game for a rematch',ox+Bd/2,y+cs*.75);
+}
+function render(){
+  const ink=LOOK==='ink';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle=ink?'#e9dfc4':'#18233b';ctx.fillRect(0,0,W,H);
+  let sx=0,sy=0;const sk=S.rt-S.shakeT;
+  if(sk<.35){const a=S.shakeA*(1-sk/.35);sx=(Math.random()-.5)*a;sy=(Math.random()-.5)*a}
+  ctx.save();ctx.translate(sx,sy);
+  if(boardCache)ctx.drawImage(boardCache,ox,oy,Bd,Bd);
+  drawTurnGlow();
+  drawMystery();
+  drawEpitaphs();
+  drawBombs();
+  layout();
+  const order=S.tokens.slice().sort((a,b)=>(!!a.anim-!!b.anim)||(b.flat-a.flat)||(a.dy-b.dy));
+  order.forEach(drawToken);
+  drawBrawl();drawThrows();drawCrate();drawParts();drawPops();
+  ctx.restore();
+  const fk=(S.rt-S.flashT)/.3;
+  if(fk>=0&&fk<1&&!reduceMotion){ctx.fillStyle=rgba('#fff6dc',.75*(1-fk));ctx.fillRect(0,0,W,H)}
+  drawBubbles();drawWin();
+}
+
+// ---------- dice ----------
+const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],
+  5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
+function drawDice(){
+  const s=68,c=dctx,ink=LOOK==='ink',d=S.dice,col=seatCol(d.seat);
+  c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,s,s);
+  let v=d.v,rot=0,sc=1;
+  if(d.rolling){v=1+Math.floor(hash(Math.floor(S.gt*14))*6);rot=(hash(Math.floor(S.gt*14)+.5)-.5)*.7}
+  if(S.phase==='roll'&&S.awaitRoll)sc=1+Math.sin(S.rt*6)*.05;
+  c.save();c.translate(s/2,s/2);c.rotate(rot);c.scale(sc,sc);c.translate(-s/2,-s/2);
+  const m=7,z=s-m*2;
+  if(ink){
+    c.fillStyle=PAPER;rr(c,m,m,z,z,8);c.fill();
+    c.fillStyle=rgba(col,.35);rr(c,m,m,z,z,8);c.fill();
+    c.strokeStyle=INK;c.lineWidth=2.5;rr(c,m+.5,m-.5,z,z,8);c.stroke();
+    c.fillStyle=INK;
+  }else{
+    c.fillStyle='rgba(0,0,0,.3)';rr(c,m+1,m+3,z,z,12);c.fill();
+    const g=c.createLinearGradient(0,m,0,m+z);g.addColorStop(0,'#ffffff');g.addColorStop(1,'#dfe4ef');
+    c.fillStyle=g;rr(c,m,m,z,z,12);c.fill();c.strokeStyle=col;c.lineWidth=4;rr(c,m+2,m+2,z-4,z-4,10);c.stroke();
+    c.fillStyle='#18233b';
+  }
+  for(const[px,py]of PIPS[v]){c.beginPath();c.arc(m+px*z,m+py*z,z*.085,0,Math.PI*2);c.fill()}
+  c.restore();
+}
+
+// ---------- UI ----------
+function ui(){
+  const s=S.over?S.winner:S.turn,name=SEATS[s].name;
+  $('#chip').style.background=seatCol(s);
+  let txt;
+  const you=isHuman(s)&&soloHuman();
+  if(!S.started)txt='Choose who plays, then start';
+  else if(S.over)txt=you?'You won!':`${name} won`;
+  else if(isHuman(s)&&!you)txt=`${name}: `+({boot:'tap your teammate to kick him 3 squares, or stack up',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
+  else if(isHuman(s))txt={boot:'Tap your teammate to kick him 3 squares, or stack up',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
+  else txt={nomove:`${name}: no move`,three:`${name}: three sixes, turn lost`}[S.phase]||`${name} is playing`;
+  if(!S.over&&S.retreat&&S.retreat.armed&&S.retreat.seat===s&&(S.phase==='roll'||S.phase==='rolling'))
+    txt=you?'Retreat orders: this roll moves backwards':`${name}: retreat orders, this roll moves backwards`;
+  if(S.forced&&!S.over)txt+=` (next roll: ${S.forced})`;
+  if(S.mystForce&&!S.over)txt+=` (test: ${S.mystForce==='good'?'supply drop':'retreat'})`;
+  $('#turnText').textContent=txt;
+  const h=S.hist[s],six=h.filter(v=>v===6).length;
+  $('#hLast').textContent=h.slice(-8).join(' ')||'-';
+  $('#hSix').textContent=`${you?'Your':name+"'s"} sixes: ${six} of ${h.length} (fair: ${(h.length/6).toFixed(1)})`;
+  $('#bSkip').hidden=!S.awaitPick||(S.phase!=='bomb'&&S.phase!=='boot');
+  $('#bSkip').textContent=S.phase==='boot'?'Stack up':'Move instead';
+  $('#bSpeed').textContent=`Speed ${SPEED}x`;
+  if(VOICE==='speech'&&!speechReady())$('#turnText').textContent+=' (speech not available here, using gibberish)';
+  $('#bSound').textContent=soundOn?'Sound on':'Sound off';
+  document.documentElement.dataset.look=LOOK;
+}
+function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll()}
+const DRILLS={bomb:()=>bombDrill(),revenge:revengeDrill,mystery:mysteryDrill,meltdown:meltdownDrill,rivals:rivalsDrill,ceasefire:ceasefireDrill,
+  reinforce:()=>reinforceDrill(),boot:bootDrill,squad:squadDrill,brawl:brawlDrill};
+$('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e.target.blur();if(f)f()};
+$('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'))S.awaitPick(null)};
+$('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;try{localStorage.setItem('lw.speed',SPEED)}catch(e){}ui()};
+$('#bSound').onclick=()=>{soundOn=!soundOn;ui()};
+$('#bNew').onclick=()=>{ac();newGame()};
+dcv.onclick=requestRoll;
+cv.addEventListener('pointerdown',e=>{
+  ac();
+  const r=cv.getBoundingClientRect(),bx=(e.clientX-r.left-ox)/cs,by=(e.clientY-r.top-oy)/cs;
+  if(S.awaitPick){
+    let best=null,bd=.75;
+    for(const t of S.selectable){const d=Math.hypot(t.dx-bx,t.dy-.05-by);if(d<bd){bd=d;best=t}}
+    if(best)S.awaitPick(best);
+  }else if(S.awaitRoll)requestRoll();
+});
+addEventListener('keydown',e=>{
+  if(e.target&&e.target.tagName==='INPUT'){if(e.key==='Enter')$('#bStart').click();return}
+  if(e.key===' '||e.key==='Enter'){if(e.target.tagName!=='BUTTON'){e.preventDefault();requestRoll()}}
+  else if(/^[1-6]$/.test(e.key)){S.forced=+e.key;ui()}
+  else if(e.key==='b'||e.key==='B')bombDrill();
+  else if(e.key==='r'||e.key==='R')revengeDrill();
+  else if(e.key==='m'||e.key==='M')mysteryDrill();
+});
+
+function resize(){
+  const r=$('#stage').getBoundingClientRect();
+  dpr=Math.min(2,window.devicePixelRatio||1);
+  W=r.width;H=r.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  Bd=Math.floor(Math.min(W,H));cs=Bd/15;ox=(W-Bd)/2;oy=(H-Bd)/2;
+  dcv.width=Math.round(68*dpr);dcv.height=dcv.width;
+  buildBoard();
+}
+addEventListener('resize',resize);
+
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,Math.max(0,(now-last)/1000));last=now;
+  S.rt+=dt;S.gt+=dt*SPEED;
+  if(S.waiters.length){
+    const due=S.waiters.filter(w=>w.t<=S.gt);
+    if(due.length){S.waiters=S.waiters.filter(w=>w.t>S.gt);due.forEach(w=>w.res())}
+  }
+  stepShame();
+  // a human sitting on their turn gets one nudge from the bots
+  if((S.awaitRoll||S.awaitPick)&&S.started&&!S.idleSaid&&S.rt-S.idleT>8){S.idleSaid=true;taunt('idle')}
+  render();drawDice();
+  requestAnimationFrame(frame);
+}
+
+window.__lw={get S(){return S},frame,newGame,TRACK,SEATS};
+S=newState();applyNames();
+resize();ui();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{buildBoard()});
+requestAnimationFrame(frame);
+if(DEMO)startGame();else showSetup();
+})();
+</script>

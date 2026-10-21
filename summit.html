@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ludo Wars Summit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap">
+<style>
+/* Layout: full-bleed 3D mountain, a title strip, altimeter and event banner on top, the game dock pinned to the bottom. Snow-and-ink theme. */
+:root{
+  --sky:#8fb2d4; --card:#f4f1ea; --ink:#1f2328; --muted:#5b6672; --line:rgba(31,35,40,.32); --accent:#c0502e;
+  --font:"Patrick Hand","Comic Sans MS",cursive;
+  color-scheme:light;
+}
+html,body{height:100%}
+body{background:var(--sky);color:var(--ink);font-family:var(--font);overflow:hidden;margin:0}
+#app{position:relative;height:100%}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cap{position:absolute;top:8px;left:0;right:0;margin:0;text-align:center;font-size:16px;color:var(--muted);pointer-events:none;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  text-shadow:0 0 4px var(--sky),0 0 10px var(--sky)}
+#cap b{color:var(--ink);font-weight:inherit;font-size:22px;display:block}
+#alt{position:absolute;top:10px;right:max(16px,env(safe-area-inset-right,0px));font-size:15px;color:var(--muted);text-align:right;
+  font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 0 4px var(--sky)}
+#alt b{display:block;font-size:22px;color:var(--ink);font-weight:inherit}
+#banner{position:absolute;top:64px;left:50%;transform:translateX(-50%);background:var(--card);border:2px solid var(--ink);border-radius:10px;
+  padding:8px 16px;font-size:20px;box-shadow:3px 4px 0 rgba(31,35,40,.2);text-align:center;max-width:calc(100% - 32px);box-sizing:border-box}
+#banner[hidden]{display:none}
+#panel{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.card{background:var(--card);border:2px solid var(--ink);border-radius:10px;box-shadow:3px 4px 0 rgba(31,35,40,.2);
+  padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:center;max-width:640px;width:100%;box-sizing:border-box}
+button{font:inherit;font-size:16px;line-height:1;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label{display:flex;align-items:center;gap:6px;font-size:16px;white-space:nowrap}
+.dock{gap:8px 16px}
+#turn{display:flex;align-items:center;gap:8px;font-size:19px;min-width:0}
+#chip{width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid var(--line)}
+#dice{width:68px;height:68px;cursor:pointer;flex:none}
+#dice:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:12px}
+#info{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
+#info b{color:var(--ink);font-weight:inherit;letter-spacing:.12em}
+#bAv:disabled{opacity:.45;cursor:default}
+#slopes{display:flex;gap:6px}#slopes[hidden]{display:none}
+#slopes button{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.row2{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:center;width:100%}
+select{font:inherit;font-size:16px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:5px 8px}
+#bubbles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.bub{position:absolute;transform:translate(-50%,-100%);background:var(--card);border:2px solid var(--ink);border-radius:8px;padding:4px 9px;
+  font-size:16px;line-height:1.15;max-width:190px;text-align:left;box-shadow:2px 3px 0 rgba(31,35,40,.18)}
+.bub::after{content:"";position:absolute;left:50%;bottom:-9px;width:12px;height:12px;background:var(--card);border-right:2px solid var(--ink);
+  border-bottom:2px solid var(--ink);transform:translateX(-50%) rotate(45deg)}
+.bub i{display:block;width:100%;height:3px;border-radius:2px;margin-bottom:3px}
+input[type=range]{width:120px;accent-color:var(--ink)}
+input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
+.num{color:var(--muted);min-width:4.5em}
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="Summit Trek board"></canvas>
+  <p id="cap"><b>Ludo Wars · Summit Trek</b>First team to get all four soldiers to the summit wins</p>
+  <div id="alt"><b id="altV">3,400 m</b>highest soldier</div>
+  <div id="banner" hidden></div>
+  <div id="bubbles" aria-live="polite"></div>
+  <div id="panel">
+    <div class="card dock">
+      <div id="turn"><span id="chip"></span><span id="turnText">Your turn</span></div>
+      <canvas id="dice" width="68" height="68" tabindex="0" role="button" aria-label="Roll the dice"></canvas>
+      <div id="info"><span>Last rolls <b id="hLast">-</b></span><span id="status">Round 1</span></div>
+      <button id="bAv" type="button">Shout avalanche</button>
+      <div id="slopes" hidden><button type="button" data-s="0">North</button><button type="button" data-s="1">East</button><button type="button" data-s="2">South</button><button type="button" data-s="3">West</button></div>
+      <div class="row2">
+        <select id="tests" aria-label="Stage a test scene">
+          <option value="">Test a scene…</option>
+          <option value="fog">Fog rolls in</option>
+          <option value="thin">Thin air (6 counts as 4)</option>
+          <option value="rest">Rested at a tent (6 counts as 6)</option>
+          <option value="ice">Icy patch</option>
+          <option value="avalanche">Avalanche (rivals on North slope)</option>
+          <option value="sledge">Sledge capture</option>
+        </select>
+        <button id="bSpeed" type="button">Speed 1x</button>
+        <label for="snowT"><input id="snowT" type="checkbox" checked> Snowfall</label>
+        <button id="bLevels" type="button" onclick="location.href='index.html'">Levels</button><button id="bNew" type="button">New game</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.150.1/three.min.js"></script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+
+// ---------- board data (same 15x15 Ludo layout as the game) ----------
+const TRACK=[];
+for(let c=1;c<=5;c++)TRACK.push([c,6]);
+for(let r=5;r>=0;r--)TRACK.push([6,r]);
+TRACK.push([7,0]);
+for(let r=0;r<=5;r++)TRACK.push([8,r]);
+for(let c=9;c<=14;c++)TRACK.push([c,6]);
+TRACK.push([14,7]);
+for(let c=14;c>=9;c--)TRACK.push([c,8]);
+for(let r=9;r<=14;r++)TRACK.push([8,r]);
+TRACK.push([7,14]);
+for(let r=14;r>=9;r--)TRACK.push([6,r]);
+for(let c=5;c>=0;c--)TRACK.push([c,8]);
+TRACK.push([0,7]);TRACK.push([0,6]);
+const SAFE=new Set([0,8,13,21,26,34,39,47]),STARTS=[39,0,13,26];
+const ICE=new Set([3,17,29,43]);                 // icy patches on the track (a soldier landing here would slide one more)
+const SEATS=[
+  {name:'RED CAMP',col:'#c2483a',base:[0,9],home:[[7,13],[7,12],[7,11],[7,10],[7,9]]},
+  {name:'GREEN CAMP',col:'#4a8a52',base:[0,0],home:[[1,7],[2,7],[3,7],[4,7],[5,7]]},
+  {name:'YELLOW CAMP',col:'#d0a12e',base:[9,0],home:[[7,1],[7,2],[7,3],[7,4],[7,5]]},
+  {name:'BLUE CAMP',col:'#3b6aa8',base:[9,9],home:[[13,7],[12,7],[11,7],[10,7],[9,7]]},
+];
+const SLOT=[[2,2],[4,2],[2,4],[4,4]];
+const INK='#1f2328';
+const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const rgba=(h,a)=>{const[r,g,b]=hex(h);return`rgba(${r},${g},${b},${a})`};
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
+
+// ---------- the mountain: one height function shared by the terrain mesh and everything standing on it ----------
+// World units = board cells; the 15x15 board sits on a 17x17 sheet (one cell of margin), centre at the origin.
+// Corners (base camps) are low and flat; the arms climb the slopes; the 3x3 centre is the summit.
+// peak height 2.1, picked by the user with a live slider (2026-10-20): the first cut (3.9) hid the far side of the board
+const PEAK=2.1;
+function height(x,z){
+  const r=Math.hypot(x,z)*.82+Math.max(Math.abs(x),Math.abs(z))*.18;   // rounded, slightly square-shouldered mountain
+  let h=PEAK*Math.pow(1-smooth(r/9.6),1.25);
+  h+=.12*Math.sin(x*.9+z*.4)*Math.sin(z*.7-x*.3)*(1-smooth(r/2));      // gentle folds in the slopes, none at the summit
+  const camp=smooth((Math.min(Math.abs(x),Math.abs(z))-3.2)/1.2);        // flatten the four corner camps a little
+  return h*(1-.55*camp)+.05;
+}
+// metres for the altimeter: the summit is 5,364 m (a Himalayan base-camp kind of number), the camps about 3,400 m
+const metres=y=>Math.round(3400+(y/height(0,0))*1964);
+
+// ---------- the trekking-map texture ----------
+const CELL=96,TEX=CELL*17,boardCanvas=document.createElement('canvas');boardCanvas.width=boardCanvas.height=TEX;
+function drawMap(){
+  const c=boardCanvas.getContext('2d'),R=rng(9),j=a=>(R()-.5)*a,cs=CELL;
+  const w=v=>(v+8.5)*cs;                       // world -> texture pixels
+  // ground by height: meadow, rock, snow (sampled per small tile, then softened by the drawing on top)
+  const T=4;for(let py=0;py<TEX;py+=T)for(let px=0;px<TEX;px+=T){
+    const x=px/cs-8.5,z=py/cs-8.5,h=height(x,z)/PEAK,n=(R()-.5)*.06;
+    const col=h+n>.62?[244,246,248]:h+n>.42?[196,198,196]:h+n>.22?[176,170,150]:[154,168,126];
+    c.fillStyle=`rgb(${col.join(',')})`;c.fillRect(px,py,T,T);
+  }
+  // contour lines every ~300 m, slightly wobbly ink
+  c.strokeStyle='rgba(31,35,40,.22)';c.lineWidth=2;
+  for(let lv=1;lv<9;lv++){const target=lv*PEAK/9;c.beginPath();
+    for(let a=0;a<=Math.PI*2+.01;a+=.03){let lo=0,hi=9.5;for(let i=0;i<22;i++){const m=(lo+hi)/2;height(Math.cos(a)*m,Math.sin(a)*m)>target?lo=m:hi=m}
+      const x=w(Math.cos(a)*lo)+j(3),y=w(Math.sin(a)*lo)+j(3);a?c.lineTo(x,y):c.moveTo(x,y)}
+    c.stroke()}
+  c.save();c.translate(cs,cs);
+  c.lineCap='round';c.lineJoin='round';
+  const box=(x,y,W,H,lw)=>{c.lineWidth=lw||cs*.04;c.strokeStyle=INK;c.strokeRect(x+j(2),y+j(2),W,H)};
+  // base camps: trampled ground, four tent pads, the camp's name
+  SEATS.forEach(s=>{const[bx,by]=s.base;
+    c.fillStyle=rgba(s.col,.32);c.fillRect(bx*cs,by*cs,6*cs,6*cs);box(bx*cs,by*cs,6*cs,6*cs,cs*.06);
+    c.fillStyle='rgba(244,241,234,.86)';c.fillRect((bx+1)*cs,(by+1)*cs,4*cs,4*cs);box((bx+1)*cs,(by+1)*cs,4*cs,4*cs);
+    SLOT.forEach(([sx,sy])=>{const x=(bx+sx)*cs,y=(by+sy)*cs;
+      c.fillStyle=rgba(s.col,.85);c.beginPath();c.moveTo(x-cs*.55,y+cs*.4);c.lineTo(x,y-cs*.45);c.lineTo(x+cs*.55,y+cs*.4);c.closePath();c.fill();
+      c.lineWidth=cs*.04;c.strokeStyle=INK;c.stroke();c.beginPath();c.moveTo(x,y-cs*.45);c.lineTo(x,y+cs*.4);c.stroke()});
+    c.fillStyle=INK;c.font=`${Math.round(cs*.55)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(s.name,(bx+3)*cs,(by+5.52)*cs);
+  });
+  // the trail: stone tiles; team-coloured rope lanes up to the summit; tents on the safe camps; icy patches
+  const cells=TRACK.map((p,i)=>({c:p[0],r:p[1],idx:i}));SEATS.forEach((s,si)=>s.home.forEach(([cc,rr])=>cells.push({c:cc,r:rr,home:si})));
+  for(const cell of cells){
+    const x=cell.c*cs,y=cell.r*cs,si=cell.home!=null?cell.home:STARTS.indexOf(cell.idx);
+    c.fillStyle=si>=0?rgba(SEATS[si].col,.78):'rgba(236,232,222,.92)';c.fillRect(x+cs*.05,y+cs*.05,cs*.9,cs*.9);
+    if(cell.idx!=null&&ICE.has(cell.idx)){c.fillStyle='rgba(176,214,240,.92)';c.fillRect(x+cs*.05,y+cs*.05,cs*.9,cs*.9);
+      c.strokeStyle='rgba(60,110,150,.7)';c.lineWidth=cs*.025;c.beginPath();c.moveTo(x+cs*.2,y+cs*.3);c.lineTo(x+cs*.5,y+cs*.5);c.lineTo(x+cs*.45,y+cs*.8);
+      c.moveTo(x+cs*.5,y+cs*.5);c.lineTo(x+cs*.82,y+cs*.42);c.stroke()}
+    box(x+cs*.05,y+cs*.05,cs*.9,cs*.9,cs*.035);
+    if(cell.idx!=null&&SAFE.has(cell.idx)){const tx=x+cs/2,ty=y+cs/2;
+      c.fillStyle=si>=0?'rgba(255,255,255,.85)':'#e4703f';c.beginPath();c.moveTo(tx-cs*.3,ty+cs*.24);c.lineTo(tx,ty-cs*.26);c.lineTo(tx+cs*.3,ty+cs*.24);c.closePath();c.fill();
+      c.strokeStyle=INK;c.lineWidth=cs*.035;c.stroke()}
+  }
+  // the summit: snow cap, cairn and flag
+  const m=7.5*cs;c.fillStyle='#ffffff';c.beginPath();c.arc(m,m,cs*1.4,0,Math.PI*2);c.fill();
+  c.strokeStyle=INK;c.lineWidth=cs*.05;c.beginPath();c.arc(m+j(2),m+j(2),cs*1.4,0,Math.PI*2);c.stroke();
+  c.fillStyle='#bfc3c7';[[-.3,.25],[.25,.28],[0,.02],[-.05,-.2]].forEach(([dx,dy])=>{c.beginPath();c.ellipse(m+dx*cs,m+dy*cs,cs*.26,cs*.17,0,0,Math.PI*2);c.fill();c.stroke()});
+  c.lineWidth=cs*.06;c.beginPath();c.moveTo(m,m-cs*.2);c.lineTo(m,m-cs*1.1);c.stroke();
+  c.fillStyle='#e4703f';c.beginPath();c.moveTo(m,m-cs*1.1);c.lineTo(m+cs*.6,m-cs*.9);c.lineTo(m,m-cs*.7);c.closePath();c.fill();c.lineWidth=cs*.035;c.stroke();
+  c.fillStyle=INK;c.font=`${Math.round(cs*.42)}px "Patrick Hand",cursive`;c.textAlign='center';c.fillText('SUMMIT 5,364 m',m,m+cs*.95);
+  c.lineWidth=cs*.08;c.strokeRect(cs*.04,cs*.04,15*cs-cs*.08,15*cs-cs*.08);
+  c.restore();
+}
+
+// ---------- ink soldiers (with a little scarf for the cold) ----------
+function soldierCanvas(col){
+  const W=128,H=192,cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const c=cv.getContext('2d'),h=170;c.translate(W/2,H-6);
+  c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;const lw=h*.075;
+  c.fillStyle=rgba(col,.45);c.beginPath();c.ellipse(0,0,h*.3,h*.08,0,0,Math.PI*2);c.fill();
+  const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+  L(0,-h*.38,-h*.12,0);L(0,-h*.38,h*.12,0);L(0,-h*.38,0,-h*.66);
+  L(-h*.2,-h*.36,h*.27,-h*.84,lw*1.25);L(0,-h*.63,-h*.1,-h*.44);L(0,-h*.63,h*.13,-h*.62);
+  const hy=-h*.8,hr=h*.12;
+  c.fillStyle='#f4f1ea';c.beginPath();c.arc(0,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  c.beginPath();c.arc(0,hy-hr*.15,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
+  // scarf
+  c.fillStyle=col;c.beginPath();c.moveTo(-hr*.9,hy+hr*.95);c.lineTo(hr*.9,hy+hr*.95);c.lineTo(hr*.7,hy+hr*1.45);c.lineTo(-hr*.7,hy+hr*1.45);c.closePath();c.fill();c.lineWidth=lw*.6;c.stroke();
+  c.beginPath();c.moveTo(hr*.5,hy+hr*1.4);c.lineTo(hr*1.3,hy+hr*2.6);c.lineTo(hr*.8,hy+hr*2.7);c.closePath();c.fill();c.stroke();
+  c.fillStyle=INK;[-1,1].forEach(s=>{c.beginPath();c.arc(s*hr*.35+hr*.22,hy+hr*.18,hr*.14,0,Math.PI*2);c.fill()});
+  return cv;
+}
+function peaksCanvas(seed){
+  const W=512,H=200,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d'),R=rng(seed);
+  const pts=[[0,H]];let x=0;while(x<W){x+=30+R()*70;pts.push([x,40+R()*120])}pts.push([W,H]);
+  c.fillStyle='#c9d2dc';c.beginPath();pts.forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();c.fill();
+  c.fillStyle='#f7f9fb';for(let i=1;i<pts.length-1;i++){const[a,b]=pts[i];if(b<110){c.beginPath();c.moveTo(a,b);c.lineTo(a-18,b+26);c.lineTo(a-4,b+20);c.lineTo(a+6,b+30);c.lineTo(a+20,b+24);c.closePath();c.fill()}}
+  c.strokeStyle='rgba(31,35,40,.55)';c.lineWidth=3;c.beginPath();pts.slice(1,-1).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.stroke();
+  return cv;
+}
+
+// ---------- scene ----------
+const canvas=$('#c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+const SKY=new THREE.Color(0x8fb2d4),WHITE=new THREE.Color(0xf1f4f7);
+scene.background=SKY.clone();scene.fog=new THREE.Fog(SKY.clone(),34,90);
+const camera=new THREE.PerspectiveCamera(40,1,.1,300);
+const hemi=new THREE.HemisphereLight(0xdfe9f3,0x6b6452,.62);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffe1b0,1.0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-13,right:13,top:13,bottom:-13,near:1,far:70});sun.shadow.bias=-.0008;scene.add(sun,sun.target);
+const tex=c=>{const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=4;return t};
+drawMap();const mapTex=tex(boardCanvas);
+
+// terrain: a 17x17 sheet displaced by the height function
+const terrainGeo=new THREE.PlaneGeometry(17,17,160,160);terrainGeo.rotateX(-Math.PI/2);
+function shapeTerrain(){const p=terrainGeo.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,height(p.getX(i),p.getZ(i)));p.needsUpdate=true;terrainGeo.computeVertexNormals();terrainGeo.computeBoundingSphere()}
+shapeTerrain();
+const terrainMat=new THREE.MeshLambertMaterial({map:mapTex,transparent:true});
+const terrain=new THREE.Mesh(terrainGeo,terrainMat);terrain.castShadow=terrain.receiveShadow=true;scene.add(terrain);
+// skirt: the sheet's edge, and a snowy ground plane around it
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(220,220),new THREE.MeshLambertMaterial({color:0xdde5ec,transparent:true}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-.02;ground.receiveShadow=true;scene.add(ground);
+// distant ink peaks on the horizon
+const ranges=new THREE.Group();scene.add(ranges);
+for(let k=0;k<9;k++){const a=k/9*Math.PI*2,m=new THREE.Mesh(new THREE.PlaneGeometry(46,18),new THREE.MeshBasicMaterial({map:tex(peaksCanvas(k+4)),transparent:true,fog:true,depthWrite:false}));
+  m.position.set(Math.cos(a)*52,8.5,Math.sin(a)*52);m.lookAt(0,8.5,0);ranges.add(m)}
+
+// =====================================================================================================================
+// the game: classic Ludo + the Summit rules. You (Red) vs 3 bots.
+//  Fog: from round 5-7, then every 7-9 rounds (every 4-5 was a whiteout ~half the game); each player picks one soldier (5 s, bots instantly); until everyone has had 2 turns only the
+//       chosen soldiers are visible and only they move; if yours can't use the roll, the roll is lost.
+//  Thin air: from progress 43 (last 8 squares before the home lane) and in the lane, rolls above 4 count as 4, unless the
+//       soldier ended its last move on a tent (safe square): then one move is uncapped.
+//  Ice: landing on an icy square slides one more square (and captures there).
+//  Avalanche: once per game per player, instead of rolling, shout: every soldier on the outer half of one slope slides back 3.
+//  Captures are sledge rides back to camp; the sun moves through the day; each soldier home plants a flag on the summit.
+// =====================================================================================================================
+const V=(x,y,z)=>new THREE.Vector3(x,y,z),_f=new THREE.Vector3(),_r=new THREE.Vector3(),_m=new THREE.Matrix4(),UP=V(0,1,0),_proj=new THREE.Vector3();
+const COLS=SEATS.map(s=>s.col),FIN=[[7.5,8.25],[6.75,7.5],[7.5,6.75],[8.25,7.5]],FIN_OFF=[[-.22,-.18],[.22,-.18],[-.22,.2],[.22,.2]];
+let TEAM='';try{const t=JSON.parse(localStorage.getItem('lw.teams'));if(Array.isArray(t)&&t[0])TEAM=String(t[0]).slice(0,14)}catch(e){}
+const NAMES=[TEAM||'You','Sgt. Green','Cpl. Yellow','Pvt. Blue'];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+// ---------- dialogue (2026-10-20 upgrade, ported from the classic game) ----------
+// A leading "G:" / "Y:" / "B:" / "R:" tags a line to one team's personality (Green pompous, Yellow nervous, Blue sarcastic,
+// Red earnest); untagged lines suit anyone. {victim} {attacker} {leader} {bully} are filled from the game.
+const LINES={
+  capAtk:["Off you go. Wheee!","Enjoy the ride down.","See you at base camp!","Mountains are for winners.","Sorry, one person per ledge.","Down you go, the scenic route.",
+    "Should have brought crampons.","I'll save you a spot at the top.","Gravity says hello.","This ledge is taken.","Mind the first step. It's a big one.",
+    "Back to camp, {victim}. Put the kettle on.","Sorry {victim}, the mountain only fits one of us.","Bon voyage!","Downhill is that way. Fast.",
+    "Somebody has to go down. Might as well be you.","Enjoy the snow. All of it.",
+    "G:A sergeant always has right of way on a mountain.","G:Step aside. Officer ascending.","G:You were blocking my view of the summit.",
+    "Y:Sorry! Sorry! I slipped into you! Sort of.","Y:Oh no, did I push you? I'm so sorry. Wave from the bottom!","Y:I didn't mean it! Mostly!",
+    "B:Oh no. Anyway.","B:Enjoy the toboggan, champ.","B:Down is also a direction. Congratulations.",
+    "R:For the summit!","R:Nothing personal, {victim}. The flag is mine!","R:Onwards and upwards! You, downwards."],
+  sledge:["Wheeeeee!","This is actually fun!","Not again! ...okay, a little fun.","My hat! I lost my hat!","Base camp, here I come!","I've decided I love sledging.",
+    "Does this thing have brakes?!","Tell my snowman I love him!","I'll be back. In about forty turns.","Rude, {attacker}. Fun, but rude.",
+    "G:A sergeant does not sledge! ...A sergeant is sledging.","Y:Too fast! TOO FAST!","B:Great. All that climbing for this.","R:I'll be back up, {attacker}!"],
+  capVicClose:["I could SEE the flag!","I was nearly at the top!","So close I could smell the hot chocolate!","Three steps from glory. THREE.","Why is the mountain like this?!",
+    "G:Mere metres from glory! An outrage!","Y:I knew it. I KNEW the top was too good to be true.","B:Love starting over. My favourite."],
+  six:["Six! I've got my second wind.","A six! Onward and upward.","Six! The mountain trembles.","Six! My legs remember how to work.","A six! Sherpa speed!",
+    "Six! Somebody tell the summit I'm coming.","G:A six, as befits my rank.","Y:A six? On a MOUNTAIN? Is that safe?","B:A six. Alert the yaks.","R:Six! Let's climb!"],
+  out:["Leaving camp! Wish me luck.","Got my boots on. Let's climb.","Fresh mountain air!","Up we go.","Map? Check. Snacks? Check. Courage? Mostly.","Onto the trail!",
+    "Goodbye, warm tent. Hello, regret.","G:The sergeant leads the expedition.","Y:Is it too late to stay in the tent?","B:Ah, the great freezing outdoors.","R:Here we go! Summit or bust!"],
+  stuck:["Still at camp. Making tea, I guess.","Is it too cold for a six?","We've built a snowman. Several.","Camp life: tea, waiting, more tea.","I've named every rock in this camp.",
+    "We've started a choir. We're terrible.","G:A sergeant does not wait! ...Except at base camp.","Y:Honestly, camp is nice. Warm. Safe.","B:Love waiting in the snow. Top hobby."],
+  cap:["Can't... feel... my legs...","Only four steps. The air is so thin.","Why is everything uphill?","Breathe in. Breathe out. One more step.","I'm fine. I'm just... resting... while walking.",
+    "Who put all this air so far apart?","My lungs have filed a complaint.","Four steps. That's all the mountain allows.","Is this what a fish feels like?",
+    "G:A sergeant does not pant. This is... dignified breathing.","Y:Is it normal to see stars in daytime?","B:Thin air. Thick regret."],
+  rest:["Tent! Five minutes, then I'm a new soldier.","Hot soup. Best tent ever.","Catching my breath. Back soon.","Socks off. Socks back on. Ready.","A nap and I'll run the rest. Maybe."],
+  ice:["Ice! Ice! ICE!","Whoa whoa whoaaa!","Nobody salted this path!","I'm skating! I can't skate!","Wheee! I mean, help!","Ten points for style!"],
+  iceHit:["Coming through! Can't stop!","Excuse me! No brakes!","Sorry {victim}! Ice! ICE!"],
+  home:["SUMMIT! I can see my house from here! It's a tent.","Flag planted! Where's the hot chocolate?","Made it to the top! Never again. Probably again.",
+    "Top of the world! Mild frostbite!","I'm on top! Somebody take a photo!","G:Mission accomplished. Medals at altitude, please.","Y:I made it and I'm never going down.","B:Oh look, more snow. Up here. Thrilling.","R:One flag up! Who's next?"],
+  finally:["FINALLY. The summit.","I'd like to thank my legs. And nobody else.","That took longer than the whole expedition."],
+  win:["The whole team on the summit! Best view ever.","Summit conquered! Somebody take a photo.","Four flags! Write this in the mountain book!"],
+  noMove:["Nowhere to go. Admiring the view.","Can't move. Too cold.","I'll just stand here and freeze.","That number was for a different mountain."],
+  fogPick:["Fog! Everyone pick a buddy!","I can't see my own feet!","Who turned off the mountain?","Hold hands! Don't hold my hand.","Was that a yeti? Tell me it wasn't a yeti."],
+  fogLost:["I can't see where I'm going! Staying put.","Lost in the fog. Not moving an inch.","Is this the trail? This might be a cloud.","I'm not lost. I'm... exploring vertically.",
+    "Y:I'm not moving. Something in here growled.","B:Ah yes, the famous view.","Hello? HELLO? ...Just my echo.","I'll wait. Fog can't last forever. Can it?",
+    "Every direction looks like 'white'.","I'm standing very still and very brave.","Was that step a step or a cliff? Not finding out.","G:A sergeant waits for visibility. Strategically.",
+    "R:Hold position! I think. Is this a position?","Somebody turn the mountain back on."],
+  fogEnd:["The fog's gone! Hello, mountain.","I can see! Was I always standing here?","Where did everyone go? Oh. There.","I've been holding a rock's hand this whole time."],
+  avShout:["AVALANCHE!","YOOO-DEL-AY-EE-OOO!","Hey mountain! Do a thing!","Everybody duck! Not me. Everyone else.","SNOW TIME!"],
+  avHit:["Snow in my everything!","I was nearly there!","Why is the mountain angry with me?","Rolling... rolling... still rolling...","I'm a snowball now. This is my life.","Who yelled?! WHO YELLED?!"],
+  three:["Three sixes? Even the mountain is suspicious.","Too lucky. Altitude sickness. Sit down."],
+  // now and then, a mountain moment from someone on the trail
+  ambient:["Is that a yeti? That's a yeti.","I can't feel my fingers. Are they still there?","Who packed this map? It's upside down.","I've been walking for hours. It's been two turns.",
+    "My beard has icicles. I don't have a beard.","Is it lunch? It feels like lunch.","Are we there yet? We're not there yet.","I think the mountain is getting taller.",
+    "G:A sergeant never needs a map.","Y:Did the mountain just move?","B:Lovely day for slowly freezing.","R:Keep going, team! Nearly halfway! Probably!"],
+  // bots teasing the human
+  botCap:["Calculated. Including the sledge.","Thank you for climbing so slowly.","Base camp is lovely this time of year, human.","Beep. You go down now."],
+  botHit:["Lucky. The mountain was on your side.","Recalibrating. Also sledging.","Error: brakes not found."],
+  idle:["Take your time. We'll just freeze.","Is the human buffering?","Tap the dice. The square thing. Yes, that one.","Hurry, the yeti is getting hungry."],
+  // director events
+  gangUp:["{leader} is halfway to the summit and we're just standing here!","Everyone! Stop {leader} before they plant a flag!","Look at {leader}, skipping up the mountain. Get them!",
+    "New plan: everyone after {leader}."],
+  gangUpYou:["Look at you, racing up the mountain. We're coming for you!","The human thinks they own this mountain. Get them!","Everybody, after the human! They're nearly at the top!"],
+  gangReply:["Agreed!","On it.","Get them!","Finally, a plan.","Count me in.","Roped up and ready."],
+  bully:["{bully}, you abominable snowman! We're all coming for you!","Stop the {bully} avalanche of terror!","{bully} has sent enough of us sledging. Get them!"],
+  bullyYou:["You abominable snowman! We're all coming for you!","Enough sledging us, human. Everyone, get them!"],
+  underdog:["The underdog climbs again!","Last place says hello from down here!","Don't count us out yet!"],
+  finalStretch:["{leader} is one soldier from the summit. Panic!","One flag left for {leader}. Stop them!","This is it. Last climber. No pressure."],
+  losingStreak:["Three sledge rides. I'm basically a sledge now.","At this point I live at base camp.","I'd like to speak to the manager of this mountain."],
+};
+const PERSONA=['R','G','Y','B'];
+const recent=[];
+// lines remember what you have heard, across games too (localStorage): the stalest lines come first
+let HEARD={},GAMES=0,heardTimer=0;
+try{HEARD=JSON.parse(localStorage.getItem('lw.heard.summit'))||{};GAMES=+localStorage.getItem('lw.games.summit')||0}catch(e){}
+function saveHeard(){clearTimeout(heardTimer);heardTimer=setTimeout(()=>{try{localStorage.setItem('lw.heard.summit',JSON.stringify(HEARD))}catch(e){}},800)}
+function line(pool,speaker,vars){
+  vars=Object.assign({},G&&G.lineVars,vars);
+  const tag=speaker?PERSONA[speaker.seat]:null,all=LINES[pool]||['...'];
+  let opts=all.filter(l=>{const m=/^([RGYB]):/.exec(l);if(m&&m[1]!==tag)return false;return (l.match(/\{(\w+)\}/g)||[]).every(k=>vars[k.slice(1,-1)]!=null)});
+  if(!opts.length)opts=all.filter(l=>!/[{]/.test(l)&&!/^[RGYB]:/.test(l));
+  if(!opts.length)opts=all;
+  const fresh=opts.filter(l=>!recent.includes(l));if(fresh.length)opts=fresh;
+  const age=l=>HEARD[l]??-99,stalest=Math.min(...opts.map(age)),l=pick(opts.filter(x=>age(x)<=stalest+1));
+  recent.push(l);if(recent.length>30)recent.shift();HEARD[l]=GAMES;saveHeard();
+  return l.replace(/^[RGYB]:/,'').replace(/\{(\w+)\}/g,(_,k)=>vars[k]);
+}
+const SOLDIER_NAMES=["Jenkins","Dave","Patel","Kowalski","Nguyen","Okafor","Rossi","Kim","Singh","Murphy","Silva","Haddad","Larsen","Dubois","Ito","Mendez","Novak","Khan","Brown","Sato"];
+
+// ---------- small sound effects (after the first tap) ----------
+let SFX=null,SPEED=1;
+function sctx(){if(!SFX){try{SFX=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(SFX&&SFX.state==='suspended')SFX.resume();return SFX}
+function tone(f,d,type='sine',v=.15,slide=0,delay=0){const a=SFX;if(!a)return;const t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f*slide),t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(a.destination);o.start(t);o.stop(t+d+.03)}
+const sfx={rattle(){for(let i=0;i<5;i++)tone(2400+Math.random()*900,.03,'square',.03,0,i*.07)},step(){tone(260+Math.random()*60,.05,'triangle',.06)},
+  pop(){tone(880,.06,'sine',.05,1.5)},thump(){tone(130,.3,'sine',.4,.35)},cheer(){[523,659,784,1047].forEach((f,i)=>tone(f,.2,'triangle',.11,0,i*.09))},
+  wind(){tone(200,1.4,'sawtooth',.025,1.6)},slide(){tone(600,.5,'sine',.07,.4)},rumble(){for(let i=0;i<8;i++)tone(60+Math.random()*30,.3,'sawtooth',.06,.7,i*.12)},
+  whee(){tone(500,.9,'sine',.07,2.2)}};
+
+// ---------- soldiers ----------
+const soldierGeom=new THREE.PlaneGeometry(.85,1.28);soldierGeom.translate(0,.62,0);
+const soldierTex=SEATS.map(s=>tex(soldierCanvas(s.col)));
+const ringGeo=new THREE.RingGeometry(.36,.48,32);ringGeo.rotateX(-Math.PI/2);
+const glowTex=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),gr=g.createRadialGradient(64,64,6,64,64,62);
+  gr.addColorStop(0,'rgba(255,255,255,.95)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,128,128);return tex(c)})();
+// summit flags: a little pole and a pennant in the team colour for each soldier home
+function flagMesh(col){const g=new THREE.Group(),pole=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,.9,6),new THREE.MeshLambertMaterial({color:0x2a2a2a}));pole.position.y=.45;
+  const sh=new THREE.Shape();sh.moveTo(0,0);sh.lineTo(.42,-.12);sh.lineTo(0,-.26);sh.closePath();
+  const pen=new THREE.Mesh(new THREE.ShapeGeometry(sh),new THREE.MeshLambertMaterial({color:new THREE.Color(col),side:THREE.DoubleSide}));pen.position.y=.88;
+  g.add(pole,pen);g.visible=false;scene.add(g);return g}
+// a little sledge under a captured soldier
+const sledges=SEATS.map(s=>{const m=new THREE.Mesh(new THREE.BoxGeometry(.6,.06,.32),new THREE.MeshLambertMaterial({color:0x8a5a34}));m.visible=false;scene.add(m);return m});
+
+// ---------- state ----------
+let G;
+function newState(){
+  return{tokens:[],turn:0,round:1,turnNo:0,gt:0,waiters:[],awaitRoll:null,awaitPick:null,awaitSlope:null,selectable:[],forced:0,
+    dice:{v:6,rolling:false,seat:0},hist:[[],[],[],[]],drought:[0,0,0,0],over:false,winner:-1,phase:'roll',
+    bubbles:[],fog:{on:false,chosen:[null,null,null,null],turnsLeft:0,level:0,target:0},nextFog:5+Math.floor(Math.random()*3),
+    avUsed:[false,false,false,false],avFx:null,captures:0,iceSlides:0,caps:0,avalanches:0,fogs:0,fogLost:0,vt:0,capLost:0,avLost:0,
+    poolCount:{},lineVars:null,said:[],events:new Set(),capLog:[],lossStreak:[0,0,0,0],target:null,firstHome:-1,nextAmbient:3,idleT:0,idleSaid:false};
+}
+// vt: a test-only virtual clock that adds up intended durations along the turn flow, so a harness running at a low frame
+// rate with __turbo still measures true 1x game length
+const wait=sec=>new Promise(res=>G.waiters.push({t:G.gt+sec,res,vt:G.vt+sec}));
+function makeTokens(){
+  if(G&&G.tokens)G.tokens.forEach(t=>{scene.remove(t.m);scene.remove(t.ring);scene.remove(t.glow);scene.remove(t.flag)});
+  const names=[...SOLDIER_NAMES.keys()].sort(()=>Math.random()-.5);
+  for(let s=0;s<4;s++)for(let i=0;i<4;i++){
+    const mat=new THREE.MeshBasicMaterial({map:soldierTex[s],transparent:true,alphaTest:.4,side:THREE.DoubleSide}),m=new THREE.Mesh(soldierGeom,mat);scene.add(m);
+    const ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:new THREE.Color(COLS[s]),transparent:true,fog:false,depthTest:false}));ring.visible=false;ring.renderOrder=5;scene.add(ring);
+    const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,depthWrite:false,fog:false,opacity:0}));glow.scale.set(2.2,2.2,1);scene.add(glow);
+    G.tokens.push({seat:s,i,p:-1,m,mat,ring,glow,flag:flagMesh(COLS[s]),anim:null,rested:false,puff:Math.random(),pos:V(0,0,0),miss:0,
+      name:SOLDIER_NAMES[(names[s*4+i])%SOLDIER_NAMES.length]});
+  }
+}
+
+// ---------- positions ----------
+const idxOf=t=>(STARTS[t.seat]+t.p)%52;
+function posAt(seat,p,i){
+  if(p<0){const[bx,by]=SEATS[seat].base;return{x:bx+SLOT[i][0],z:by+SLOT[i][1]}}
+  if(p<=50){const[c,r]=TRACK[(STARTS[seat]+p)%52];return{x:c+.5,z:r+.5}}
+  if(p<=55){const[c,r]=SEATS[seat].home[p-51];return{x:c+.5,z:r+.5}}
+  return{x:FIN[seat][0]+FIN_OFF[i][0]*1.6,z:FIN[seat][1]+FIN_OFF[i][1]*1.6};
+}
+const posOf=t=>posAt(t.seat,t.p,t.i);
+const world=(bx,bz)=>{const x=bx-7.5,z=bz-7.5;return V(x,height(x,z),z)};
+
+// ---------- rules ----------
+const THIN=43;
+const inThinAir=t=>t.p>=THIN&&t.p<56;
+const effRoll=(t,v)=>inThinAir(t)&&!t.rested?Math.min(4,v):v;
+const canMove=(t,v)=>t.p===-1?v===6:t.p<56&&t.p+effRoll(t,v)<=56;
+function legal(seat,v){
+  let ms=G.tokens.filter(t=>t.seat===seat&&canMove(t,v));
+  if(G.fog.on){const c=G.fog.chosen[seat];ms=ms.filter(t=>t===c)}
+  return ms;
+}
+function victimsAt(seat,p){
+  if(p<0||p>50)return[];const idx=(STARTS[seat]+p)%52;if(SAFE.has(idx))return[];
+  return G.tokens.filter(t=>t.seat!==seat&&t.p>=0&&t.p<=50&&idxOf(t)===idx);
+}
+// the four slopes = the four arms of the cross; the outer half = the 3 rows/columns nearest the board edge
+const SLOPES=['North','East','South','West'];
+function slopeOf(t){
+  if(t.p<0||t.p>50)return -1;const[c,r]=TRACK[idxOf(t)];
+  if(r<=2&&c>=6&&c<=8)return 0;if(c>=12&&r>=6&&r<=8)return 1;if(r>=12&&c>=6&&c<=8)return 2;if(c<=2&&r>=6&&r<=8)return 3;return -1;
+}
+function botPick(seat,v,moves){
+  let best=moves[0],bs=-1e9;
+  for(const t of moves){
+    const ev=t.p===-1?0:effRoll(t,v),np=t.p===-1?0:t.p+ev;let s=np*.3+Math.random()*4;
+    if(np===56)s+=60;
+    if(np<=50){const vs=victimsAt(seat,np);if(vs.length)s+=100+(G.target&&G.target.until>G.turnNo&&G.target.seat!==seat&&vs.some(v=>v.seat===G.target.seat)?70:0);const idx=(STARTS[seat]+np)%52;if(SAFE.has(idx))s+=np>=THIN-6?30:12;if(ICE.has(idx))s+=8}
+    else s+=25;
+    if(t.p===-1)s+=50;
+    if(s>bs){bs=s;best=t}
+  }
+  return best;
+}
+function botWantsAvalanche(seat){
+  if(G.avUsed[seat]||G.fog.on)return -1;
+  let best=-1,bs=1;
+  for(let k=0;k<4;k++){let sc=0;G.tokens.forEach(t=>{if(slopeOf(t)===k)sc+=t.seat===seat?-1.5:1});if(sc>bs){bs=sc;best=k}}
+  return bs>=2.5&&Math.random()<.6?best:-1;
+}
+
+// ---------- speech bubbles ----------
+// common moments talk less as a game goes on, so the lines land on the big moments
+const DAMP=new Set(['six','out','stuck','noMove','capAtk','sledge','ice','cap','rest','home']);
+function say(t,pool,prob=1,vars){
+  if(!t)return;
+  if(DAMP.has(pool)){const n=G.poolCount[pool]=(G.poolCount[pool]||0)+1;prob*=Math.max(.35,1/(1+.08*Math.max(0,n-4)))}
+  if(Math.random()>prob)return;sayText(t,line(pool,t,vars));
+}
+function sayText(t,text){
+  G.bubbles=G.bubbles.filter(b=>{if(b.t===t){b.el.remove();return false}return true});
+  if(G.bubbles.length>=2){G.bubbles[0].el.remove();G.bubbles.shift()}
+  const el=document.createElement('div');el.className='bub';const bar=document.createElement('i');bar.style.background=COLS[t.seat];
+  el.append(bar,document.createTextNode(text));$('#bubbles').append(el);G.bubbles.push({t,el,t0:clock,dur:2.8});G.said.push(text);sfx.pop();
+}
+function placeBubbles(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  G.bubbles=G.bubbles.filter(b=>{
+    if(clock-b.t0>b.dur||!b.t.m.visible){b.el.remove();return false}
+    b.t.m.getWorldPosition(_proj);_proj.y+=1.5;_proj.project(camera);
+    b.el.style.left=Math.max(100,Math.min(w-100,(_proj.x*.5+.5)*w))+'px';b.el.style.top=Math.max(70,(-_proj.y*.5+.5)*h)+'px';
+    b.el.style.opacity=clock-b.t0>b.dur-.3?(b.dur-(clock-b.t0))/.3:1;return true;
+  });
+}
+function banner(text){const b=$('#banner');if(!text){b.hidden=true;return}b.textContent=text;b.hidden=false}
+
+// ---------- animations ----------
+async function hop(t,from,to,opt={}){const dur=opt.dur||.24;t.anim={kind:'hop',from,to,t0:G.gt,dur,h:opt.h||.4};await wait(dur);t.anim=null;sfx.step()}
+async function sledge(v,from,pool){
+  // the soldier sits on a sledge and slides straight down to its camp
+  sfx.whee();const to=posAt(v.seat,-1,v.i);v.anim={kind:'sledge',from,to,t0:G.gt,dur:1.7};v.p=-1;
+  await wait(.5);say(v,pool||'sledge',pool?1:.8);await wait(1.2);v.anim=null;
+}
+
+// ---------- turn flow ----------
+async function roll(seat){
+  const human=seat===0;G.dice.seat=seat;
+  // set the wait before refreshing the dock, so the avalanche button sees it is your roll
+  if(human){G.phase='roll';G.idleT=clock;G.idleSaid=false;const pending=new Promise(res=>G.awaitRoll=res);ui();const r=await pending;G.awaitRoll=null;if(r==='avalanche'||r==='fog')return r}
+  else await wait(.45);
+  G.phase='rolling';ui();G.dice.rolling=true;sfx.rattle();await wait(.55);
+  const v=G.forced||1+Math.floor(Math.random()*6);G.forced=0;G.dice.v=v;G.dice.rolling=false;G.hist[seat].push(v);ui();return v;
+}
+async function move(t,v){
+  const seat=t.seat;
+  if(t.p===-1){await hop(t,posOf(t),posAt(seat,0,t.i),{h:1,dur:.4});t.p=0;t.rested=false;say(t,'out',.4);return{captured:false,home:false}}
+  const capped=inThinAir(t)&&!t.rested&&v>4,ev=effRoll(t,v),usedRest=inThinAir(t)&&t.rested;
+  if(capped){G.capLost+=v-ev;say(t,'cap',.85);sfx.wind()}
+  for(let k=0;k<ev;k++){await hop(t,posAt(seat,t.p,t.i),posAt(seat,t.p+1,t.i),{dur:inThinAir(t)?.34:.24,h:inThinAir(t)?.25:.4});t.p++}
+  if(usedRest)t.rested=false;
+  // ice: slide one more square
+  if(t.p<50&&ICE.has(idxOf(t))){
+    G.iceSlides++;say(t,'ice');sfx.slide();await wait(.25);
+    const from=posAt(seat,t.p,t.i),to=posAt(seat,t.p+1,t.i);t.anim={kind:'slide',from,to,t0:G.gt,dur:.45};await wait(.45);t.anim=null;t.p++;
+    if(victimsAt(seat,t.p).length)say(t,'iceHit');
+  }
+  const captured=await captureAt(t);
+  if(t.p===56){sfx.cheer();if(t.miss>=2)sayText(t,line('finally',t));else say(t,'home');await wait(.6);await director('home',{t});return{captured,home:true}}
+  if(t.p<=50&&SAFE.has(idxOf(t))&&t.p>=THIN-8){t.rested=true;if(t.p>=THIN-2)say(t,'rest',.7)}
+  return{captured,home:false};
+}
+async function captureAt(t){
+  const vs=victimsAt(t.seat,t.p);if(!vs.length)return false;
+  G.lineVars={victim:'Pvt. '+vs[0].name,attacker:'Pvt. '+t.name};
+  const botOnYou=t.seat!==0&&vs.some(v=>v.seat===0),youOnBot=t.seat===0;
+  sfx.thump();say(t,botOnYou&&Math.random()<.6?'botCap':'capAtk');G.caps++;
+  const close=vs[0].p>=44;
+  vs.forEach((v,k)=>{const p=posOf(v);sledge(v,p,k?null:close?'capVicClose':youOnBot&&Math.random()<.5?'botHit':null)});
+  await wait(1.2);G.lineVars=null;
+  await director('capture',{atk:t,victims:vs});
+  return true;
+}
+// ---------- the director: group reactions to how the climb is going (each fires once per game per player) ----------
+// A runaway leader (first soldier on the summit, or 45+ progress ahead) gets ganged up on; a bully (3 captures within 8
+// turns) gets called out; both become the bots' target for ~10 turns. Plus underdog, final-stretch and losing-streak lines.
+const seatName=s=>NAMES[s];
+const progressOf=s=>G.tokens.filter(t=>t.seat===s).reduce((a,t)=>a+Math.max(0,t.p),0);
+function voiceFrom(exclude){
+  const c=G.tokens.filter(t=>!exclude.includes(t.seat)&&t.p<56&&!t.anim),bots=c.filter(t=>t.seat!==0),out=x=>x.filter(t=>t.p>=0);
+  const list=out(bots).length?out(bots):bots.length?bots:out(c).length?out(c):c;
+  return list.length?pick(list):null;
+}
+const once=key=>{if(G.events.has(key))return false;G.events.add(key);return true};
+const setTarget=s=>{G.target={seat:s,until:G.turnNo+10}};
+async function gangUp(s){
+  const a=voiceFrom([s]);if(!a)return;
+  await wait(.5);sayText(a,line(s===0?'gangUpYou':'gangUp',a,{leader:seatName(s)}));
+  const b=voiceFrom([s,a.seat]);if(b){await wait(1.1);sayText(b,line('gangReply',b))}
+  setTarget(s);
+}
+async function director(ev,d){
+  if(G.over)return;
+  if(ev==='capture'){
+    const a=d.atk.seat,hit=[...new Set(d.victims.map(v=>v.seat))];
+    G.capLog.push({n:G.turnNo,a});G.lossStreak[a]=0;hit.forEach(v=>G.lossStreak[v]++);
+    if(G.capLog.filter(c=>c.a===a&&G.turnNo-c.n<=8).length>=3&&once('bully'+a)){
+      const sp=voiceFrom([a]);if(sp){await wait(.4);sayText(sp,line(a===0?'bullyYou':'bully',sp,{bully:seatName(a)}));
+        const b=voiceFrom([a,sp.seat]);if(b){await wait(1.1);sayText(b,line('gangReply',b))}setTarget(a)}
+      return;
+    }
+    const prog=[0,1,2,3].map(progressOf),last=prog.indexOf(Math.min(...prog)),lead=prog.indexOf(Math.max(...prog));
+    if(a===last&&hit.includes(lead)&&a!==lead&&once('under'+a)){await wait(.4);sayText(d.atk,line('underdog',d.atk));return}
+    for(const v of hit)if(G.lossStreak[v]>=3&&once('streak'+v)){
+      const t=G.tokens.find(x=>x.seat===v&&x.p<56);if(t){await wait(.6);sayText(t,line('losingStreak',t))}return;
+    }
+  }
+  if(ev==='home'){
+    const s=d.t.seat,n=G.tokens.filter(t=>t.seat===s&&t.p===56).length;
+    if(n===1&&G.firstHome<0){G.firstHome=s;if(once('lead'+s)){await gangUp(s);return}}
+    if(n===3&&once('final'+s)){const sp=voiceFrom([s]);if(sp){await wait(.5);sayText(sp,line('finalStretch',sp,{leader:seatName(s)}));setTarget(s)}return}
+  }
+  if(ev==='move'){
+    const prog=[0,1,2,3].map(progressOf),sorted=prog.slice().sort((x,y)=>y-x),top=prog.indexOf(sorted[0]);
+    if(sorted[0]-sorted[1]>=45&&once('lead'+top))await gangUp(top);
+  }
+}
+async function avalanche(seat,slope){
+  G.avUsed[seat]=true;G.avalanches++;
+  const shouter=G.tokens.filter(t=>t.seat===seat&&t.p>=0&&t.p<56)[0]||G.tokens.find(t=>t.seat===seat&&t.p<56);
+  if(shouter)say(shouter,'avShout');banner(`${NAMES[seat]} ${NAMES[seat]==='You'?'start':'starts'} an avalanche on the ${SLOPES[slope]} slope!`);
+  sfx.rumble();await wait(.6);
+  const hit=G.tokens.filter(t=>slopeOf(t)===slope);
+  G.avFx={slope,t0:G.gt};
+  await Promise.all(hit.map(async t=>{const from=posOf(t),np=Math.max(0,t.p-3);G.avLost+=t.p-np;const to=posAt(t.seat,np,t.i);t.anim={kind:'tumble',from,to,t0:G.gt,dur:1.3};await wait(1.3);t.anim=null;t.p=np}));
+  if(hit.length)say(pick(hit),'avHit');else if(shouter)sayText(shouter,'Nobody there. Very loud, though.');
+  await wait(1.2);G.avFx=null;banner('');
+}
+async function fogPick(seat){
+  // the human taps a soldier within 5 s (otherwise the one furthest up the mountain); bots choose at once
+  const cands=G.tokens.filter(t=>t.seat===seat&&t.p<56);if(!cands.length)return null;
+  const furthest=cands.slice().sort((a,b)=>b.p-a.p)[0];
+  if(seat!==0)return furthest;
+  G.selectable=cands;G.phase='fogpick';ui();
+  const choice=await Promise.race([new Promise(r=>G.awaitPick=r),wait(5).then(()=>furthest)]);
+  G.awaitPick=null;G.selectable=[];return choice||furthest;
+}
+async function startFog(){
+  G.fogs++;banner('Fog is rolling in! Pick one soldier to keep in sight (5 seconds)');sfx.wind();
+  const any=G.tokens.filter(t=>t.p>=0&&t.p<56);if(any.length)say(pick(any),'fogPick');
+  for(let s=0;s<4;s++)G.fog.chosen[s]=await fogPick(s);
+  G.fog.on=true;G.fog.turnsLeft=8;G.fog.target=1;G.phase='roll';ui();
+  banner('Whiteout! Only your chosen soldier can be seen or moved, until everyone has had 2 turns');await wait(2.6);banner('');
+}
+async function endFog(){
+  G.fog.on=false;G.fog.target=0;G.fog.chosen=[null,null,null,null];banner('The fog lifts');
+  await wait(1.6);banner('');const any=G.tokens.filter(t=>t.p>=0&&t.p<56);if(any.length)say(pick(any),'fogEnd',.8);
+}
+async function playTurn(seat){
+  const human=seat===0;G.turnNo++;let sixes=0,again=true;
+  if(!human){const sl=botWantsAvalanche(seat);if(sl>=0){await avalanche(seat,sl);return}}
+  while(again&&!G.over){
+    again=false;
+    const v=await roll(seat);
+    if(v==='fog'){await startFog();again=true;continue}
+    if(v==='avalanche'){
+      G.phase='slope';ui();const sl=await new Promise(r=>G.awaitSlope=r);G.awaitSlope=null;await avalanche(0,sl);return;
+    }
+    const allBase=G.tokens.every(t=>t.seat!==seat||t.p===-1||t.p===56);
+    if(v===6){sixes++;G.drought[seat]=0;if(sixes===3){say(pick(G.tokens.filter(t=>t.seat===seat&&t.p<56)),'three');await wait(1.2);break}}
+    else if(allBase)G.drought[seat]++;
+    const moves=legal(seat,v);
+    G.tokens.filter(t=>t.seat===seat&&t.p>=51&&t.p<56&&t.p+effRoll(t,v)>56).forEach(t=>t.miss++);
+    if(!moves.length){
+      if(G.fog.on&&G.fog.chosen[seat]){G.fogLost++;say(G.fog.chosen[seat],'fogLost',.45);G.phase='foglost'}
+      else{if(allBase&&G.drought[seat]>=3)say(pick(G.tokens.filter(t=>t.seat===seat&&t.p===-1)),'stuck',human?.7:.25);G.phase='nomove'}
+      ui();await wait(.8);if(v===6&&!G.fog.on)again=true;continue;
+    }
+    if(v===6&&sixes<3)say(moves[0],'six',.25);
+    let tok;
+    if(human&&!moves.every(t=>t.p===moves[0].p)){G.selectable=moves;G.phase='pick';ui();tok=await new Promise(r=>G.awaitPick=r);G.awaitPick=null;G.selectable=[]}
+    else{if(!human)await wait(.3);tok=human?moves[0]:botPick(seat,v,moves)}
+    G.phase='moving';ui();
+    const r=await move(tok,v);await director('move',{});
+    if(G.tokens.filter(t=>t.seat===seat).every(t=>t.p===56)){G.over=true;G.winner=seat;say(tok,'win');sfx.cheer();ui();
+      banner(seat===0?'Your whole team reached the summit!':`${NAMES[seat]} conquers the summit`);return}
+    if(v===6||r.captured||r.home)again=true;
+  }
+}
+async function loop(){
+  const id=G;
+  while(!G.over&&G===id){
+    if(G.turn===0&&!G.fog.on&&G.round>=G.nextFog){await startFog();G.nextFog=G.round+7+Math.floor(Math.random()*3)}
+    // a mountain moment every few rounds, from someone out on the trail
+    if(G.turn===0&&!G.fog.on&&G.round>=G.nextAmbient){G.nextAmbient=G.round+4+Math.floor(Math.random()*4);
+      const out=G.tokens.filter(t=>t.p>=0&&t.p<56&&!t.anim);if(out.length){const t=pick(out);sayText(t,line('ambient',t));await wait(1.4)}}
+    await playTurn(G.turn);if(G.over||G!==id)break;
+    if(G.fog.on&&--G.fog.turnsLeft<=0)await endFog();
+    G.turn=(G.turn+1)%4;if(G.turn===0)G.round++;
+    ui();
+  }
+}
+
+// ---------- dock ----------
+const dctx=$('#dice').getContext('2d');
+const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],
+  5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
+function drawDice(){
+  const d=G.dice,c=dctx;let v=d.v,rot=0;if(d.rolling){v=1+Math.floor(Math.random()*6);rot=(Math.random()-.5)*.7}
+  const sc=G.phase==='roll'&&G.awaitRoll?1+Math.sin(clock*6)*.05:1;
+  c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,68,68);c.translate(34,34);c.rotate(rot);c.scale(sc,sc);c.translate(-34,-34);
+  c.fillStyle='#ffffff';c.beginPath();c.roundRect(7,7,54,54,8);c.fill();c.fillStyle=rgba(COLS[d.seat],.3);c.beginPath();c.roundRect(7,7,54,54,8);c.fill();
+  c.strokeStyle=INK;c.lineWidth=2.5;c.beginPath();c.roundRect(7.5,6.5,54,54,8);c.stroke();
+  c.fillStyle=INK;for(const[px,py]of PIPS[v]){c.beginPath();c.arc(7+px*54,7+py*54,4.6,0,Math.PI*2);c.fill()}
+}
+function ui(){
+  const s=G.over?G.winner:G.turn;$('#chip').style.background=COLS[s];
+  let txt;
+  if(G.over)txt=s===0?'You won!':`${NAMES[s]} won`;
+  else if(s===0)txt={roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Tap a glowing soldier to move',moving:'Climbing...',nomove:'No move this time',
+    fogpick:'Fog! Tap the soldier you want to keep in sight',foglost:'Your chosen soldier cannot use that roll. Roll lost',slope:'Choose a slope for the avalanche'}[G.phase]||'Your turn';
+  else txt=`${NAMES[s]} is climbing`;
+  $('#turnText').textContent=txt;
+  $('#hLast').textContent=G.hist[s].slice(-8).join(' ')||'-';
+  $('#status').textContent=G.fog.on?`Whiteout: ${Math.ceil(G.fog.turnsLeft/4)} more round${G.fog.turnsLeft>4?'s':''}`:`Round ${G.round} · ${dayName()}`;
+  $('#bAv').disabled=!(G.awaitRoll&&G.turn===0&&!G.avUsed[0]&&!G.fog.on);
+  $('#bAv').textContent=G.avUsed[0]?'Avalanche used':'Shout avalanche';
+  $('#slopes').hidden=G.phase!=='slope';
+  $('#bSpeed').textContent=`Speed ${SPEED}x`;
+}
+const dayT=()=>Math.min(1,(G.round-1)/22);
+const dayName=()=>{const t=dayT();return t<.2?'dawn':t<.45?'morning':t<.7?'afternoon':t<.9?'golden hour':'sunset'};
+function requestRoll(){sctx();if(G.awaitRoll)G.awaitRoll('roll')}
+$('#dice').onclick=requestRoll;
+$('#bAv').onclick=()=>{sctx();if(G.awaitRoll&&G.turn===0&&!G.avUsed[0]&&!G.fog.on)G.awaitRoll('avalanche')};
+document.querySelectorAll('#slopes button').forEach(b=>b.onclick=()=>{if(G.awaitSlope)G.awaitSlope(+b.dataset.s)});
+$('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;ui()};
+$('#bNew').onclick=()=>{sctx();newGame()};
+$('#snowT').onchange=e=>{snow.visible=e.target.checked};
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){if(e.target.tagName!=='BUTTON'&&e.target.tagName!=='SELECT'){e.preventDefault();requestRoll()}}});
+// test scenes: each stages a moment on your turn
+function canTest(){return G.awaitRoll&&G.turn===0&&!G.over}
+const TESTS={
+  fog(){if(!G.fog.on&&G.awaitRoll){G.nextFog=G.round+4;G.awaitRoll('fog')}},
+  thin(){const me=G.tokens.filter(t=>t.seat===0);me.forEach(t=>{t.p=-1;t.rested=false});me[0].p=44;G.forced=6;ui()},
+  rest(){const me=G.tokens.filter(t=>t.seat===0);me.forEach(t=>{t.p=-1;t.rested=false});me[0].p=44;me[0].rested=true;G.forced=6;ui()},
+  ice(){const me=G.tokens.filter(t=>t.seat===0),ip=(3-STARTS[0]+52)%52;me.forEach(t=>{t.p=-1});me[0].p=ip-2;G.forced=2;ui()},
+  avalanche(){G.avUsed[0]=false;const en=G.tokens.filter(t=>t.seat!==0).slice(0,5);const cells=[[7,0],[8,1],[6,2],[8,0],[6,1]];
+    en.forEach((t,k)=>{const idx=TRACK.findIndex(([c,r])=>c===cells[k][0]&&r===cells[k][1]);t.p=(idx-STARTS[t.seat]+52)%52});ui()},
+  sledge(){const me=G.tokens.filter(t=>t.seat===0),gr=G.tokens.find(t=>t.seat===1);me.forEach(t=>t.p=-1);me[0].p=14;
+    const idx=(STARTS[0]+17)%52;gr.p=(idx-STARTS[1]+52)%52;G.forced=3;ui()},
+};
+$('#tests').onchange=e=>{sctx();const f=TESTS[e.target.value];e.target.value='';e.target.blur();if(f&&canTest())f()};
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+function onTap(e){
+  sctx();
+  if(G.awaitPick&&G.selectable.length){
+    const r=canvas.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height*2-1));ray.setFromCamera(ndc,camera);
+    const hit=ray.intersectObjects(G.selectable.map(t=>t.m),false)[0];let tok=hit&&G.selectable.find(t=>t.m===hit.object);
+    if(!tok){let bd=60;for(const t of G.selectable){t.m.getWorldPosition(_proj);_proj.y+=.6;_proj.project(camera);
+      const d=Math.hypot((_proj.x*.5+.5)*r.width-(e.clientX-r.left),(-_proj.y*.5+.5)*r.height-(e.clientY-r.top));if(d<bd){bd=d;tok=t}}}
+    if(tok)G.awaitPick(tok);
+  }else if(G.awaitRoll)requestRoll();
+}
+
+// ---------- breath, snow, avalanche snow, sun ----------
+const puffTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d'),gr=g.createRadialGradient(32,32,2,32,32,30);
+  gr.addColorStop(0,'rgba(255,255,255,.95)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);return tex(c)})();
+const puffs=[...Array(60)].map(()=>{const s=new THREE.Sprite(new THREE.SpriteMaterial({map:puffTex,transparent:true,depthWrite:false,opacity:0}));scene.add(s);return{s,life:0,v:V(0,0,0)}});
+let puffI=0;
+function emitPuff(pos,v,size,life){const p=puffs[puffI++%puffs.length];p.life=life;p.max=life;p.size=size;p.s.position.copy(pos);p.v=v}
+const SN=1800,snowGeo=new THREE.BufferGeometry(),snowPos=new Float32Array(SN*3);
+for(let i=0;i<SN;i++){snowPos[i*3]=(Math.random()-.5)*44;snowPos[i*3+1]=Math.random()*24;snowPos[i*3+2]=(Math.random()-.5)*44}
+snowGeo.setAttribute('position',new THREE.BufferAttribute(snowPos,3));
+const snow=new THREE.Points(snowGeo,new THREE.PointsMaterial({size:.16,map:puffTex,transparent:true,depthWrite:false,color:0xffffff}));scene.add(snow);
+function setSun(t){
+  const az=-1.6+t*3.2,el=.18+Math.sin(t*Math.PI)*.75;
+  sun.position.set(Math.cos(az)*Math.cos(el)*40,Math.sin(el)*40,Math.sin(az)*Math.cos(el)*40);
+  const warm=1-Math.sin(t*Math.PI);sun.color.setRGB(1,.92-.14*warm,.82-.34*warm);sun.intensity=.75+.4*Math.sin(t*Math.PI);hemi.intensity=.5+.2*Math.sin(t*Math.PI);
+}
+
+// ---------- drawing tokens each frame ----------
+function faceCamera(m,p){m.position.copy(p);_f.copy(camera.position).sub(p);_f.y=0;if(_f.lengthSq()<1e-6)_f.set(0,0,1);_f.normalize();_r.crossVectors(UP,_f).normalize();
+  _m.makeBasis(_r,UP,_f);m.quaternion.setFromRotationMatrix(_m)}
+function renderTokens(dt){
+  const groups=new Map();
+  for(const t of G.tokens){if(t.anim)continue;const key=t.p>=0&&t.p<=50?'t'+idxOf(t):t.p>50&&t.p<56?'h'+t.seat+t.p:null;t.key=key;if(key){if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t)}}
+  sledges.forEach(s=>s.visible=false);
+  const fl=G.fog.level;
+  for(const t of G.tokens){
+    let p,tiltZ=0,sc=1;const a=t.anim;
+    if(a&&(a.kind==='hop'||a.kind==='slide')){const k=Math.min(1,(G.gt-a.t0)/a.dur),x=a.from.x+(a.to.x-a.from.x)*k,z=a.from.z+(a.to.z-a.from.z)*k;
+      p=world(x,z);if(a.kind==='hop')p.y+=Math.sin(Math.PI*k)*a.h;else tiltZ=Math.sin(k*Math.PI)*.5}
+    else if(a&&a.kind==='sledge'){const k=Math.min(1,(G.gt-a.t0)/a.dur),e=k*k*(3-2*k),x=a.from.x+(a.to.x-a.from.x)*e,z=a.from.z+(a.to.z-a.from.z)*e;
+      p=world(x,z);p.y+=.12;tiltZ=.35;const s=sledges[t.seat];s.visible=true;s.position.copy(p).add(V(0,-.05,0));s.lookAt(world(a.to.x,a.to.z).add(V(0,-.05,0)));s.rotateY(Math.PI/2);
+      if(Math.random()<.5)emitPuff(p.clone().add(V(0,.05,0)),V((Math.random()-.5)*.3,.2,(Math.random()-.5)*.3),.35,.6)}
+    else if(a&&a.kind==='tumble'){const k=Math.min(1,(G.gt-a.t0)/a.dur),x=a.from.x+(a.to.x-a.from.x)*k,z=a.from.z+(a.to.z-a.from.z)*k;
+      p=world(x,z);p.y+=Math.abs(Math.sin(k*Math.PI*3))*.4;tiltZ=k*Math.PI*4}
+    else{const bp=posOf(t);let x=bp.x,z=bp.z;const g=t.key&&groups.get(t.key);
+      if(g&&g.length>1){const k=g.indexOf(t),n=g.length;x+=(k-(n-1)/2)*.3;z+=(k-(n-1)/2)*.08;sc=.82}
+      if(t.p===56)sc=.6;p=world(x,z)}
+    const sel=G.selectable.includes(t);if(sel)p.y+=Math.abs(Math.sin(clock*6+t.i))*.18;
+    t.pos.copy(p);faceCamera(t.m,p.clone().add(V(0,.02,0)));
+    if(tiltZ){t.m.translateY(.6);t.m.rotateZ(tiltZ);t.m.translateY(-.6)}
+    t.m.scale.setScalar(sc);
+    // fog: only each team's chosen soldier stays visible
+    const keep=G.fog.chosen.includes(t);
+    t.mat.opacity=keep?1:1-fl;t.mat.fog=!keep;t.m.visible=t.mat.opacity>.02;t.m.renderOrder=keep?6:0;t.mat.depthTest=!keep||fl<.5;
+    t.glow.position.copy(p).add(V(0,.7,0));t.glow.material.opacity=keep?.55*fl:0;
+    t.ring.visible=sel||(keep&&fl>.1);if(t.ring.visible){t.ring.position.copy(p).add(V(0,.03,0));t.ring.scale.setScalar(1+Math.sin(clock*6)*.1)}
+    // summit flag for each soldier home
+    t.flag.visible=t.p===56&&fl<.5;if(t.flag.visible){const f=posOf(t);t.flag.position.copy(world(f.x,f.z)).add(V(.18,0,0))}
+    // breath in thin air
+    if(!a&&t.m.visible&&p.y>PEAK*.45&&(t.puff-=dt)<0){t.puff=1+Math.random()*.8;emitPuff(p.clone().add(V(.12,1.05,0)),V(.25+Math.random()*.2,.25,0),.25,1.4)}
+  }
+}
+function avalancheFx(){
+  if(!G.avFx)return;const k=(G.gt-G.avFx.t0);if(k>2.2)return;
+  const cells={0:[[6,0],[8,2]],1:[[12,6],[14,8]],2:[[6,12],[8,14]],3:[[0,6],[2,8]]}[G.avFx.slope];
+  for(let i=0;i<4;i++){const x=cells[0][0]+Math.random()*(cells[1][0]-cells[0][0]+1),z=cells[0][1]+Math.random()*(cells[1][1]-cells[0][1]+1);
+    emitPuff(world(x,z).add(V(0,.3+Math.random()*.4,0)),V((Math.random()-.5)*.8,.4,(Math.random()-.5)*.8),.9+Math.random()*.6,1.1)}
+}
+
+// ---------- camera + input ----------
+let yaw=.7,tilt=38,drag=null,clock=0,last=performance.now();
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);
+canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,yaw,tilt,moved:0};canvas.setPointerCapture(e.pointerId);canvas.style.cursor='grabbing'});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;drag.moved=Math.max(drag.moved,Math.hypot(e.clientX-drag.x,e.clientY-drag.y));if(drag.moved<6)return;
+  yaw=drag.yaw-(e.clientX-drag.x)*.006;tilt=Math.max(14,Math.min(80,drag.tilt+(e.clientY-drag.y)*.15))});
+const endDrag=e=>{const tap=drag&&drag.moved<6;drag=null;canvas.style.cursor='grab';if(tap&&e.type==='pointerup')onTap(e)};
+canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
+function placeCamera(time){
+  const dist=24*Math.max(1,1/(camera.aspect*1.1)),el=tilt*Math.PI/180,az=yaw+(drag?0:Math.sin(time*.08)*.12);
+  camera.position.set(Math.sin(az)*Math.cos(el)*dist,Math.sin(el)*dist+2,Math.cos(az)*Math.cos(el)*dist);camera.lookAt(0,1.4,0);
+}
+function updateFogVisuals(dt){
+  const f=G.fog;f.level+=(f.target-f.level)*Math.min(1,dt*1.3);const th=f.level;
+  scene.fog.near=34*(1-th)+.5*th;scene.fog.far=90*(1-th)+7*th;scene.fog.color.copy(SKY).lerp(WHITE,th);scene.background.copy(SKY).lerp(WHITE,th);
+  terrainMat.opacity=1-th;ground.material.opacity=1-th;terrain.visible=terrainMat.opacity>.01;ranges.visible=th<.98;
+}
+
+function newGame(){
+  if(G)G.bubbles.forEach(b=>b.el.remove());
+  const old=G;G=newState();if(old)G.tokens=old.tokens.map(t=>{scene.remove(t.m);scene.remove(t.ring);scene.remove(t.glow);scene.remove(t.flag);return null}).filter(Boolean);
+  G.tokens=[];makeTokens();banner('');ui();
+  GAMES++;try{localStorage.setItem('lw.games.summit',GAMES)}catch(e){}
+  loop();
+}
+// a human sitting on their roll gets one nudge from the bots
+function idleNudge(){
+  if(G.awaitRoll&&G.turn===0&&!G.idleSaid&&clock-G.idleT>8){G.idleSaid=true;const b=voiceFrom([0]);if(b)sayText(b,line('idle',b))}
+}
+function frame(now){
+  const dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;clock+=dt;G.gt+=dt*SPEED*(window.__turbo||1);   // __turbo: test harness only
+  if(G.waiters.length){const due=G.waiters.filter(w=>w.t<=G.gt);if(due.length){G.waiters=G.waiters.filter(w=>w.t>G.gt);due.forEach(w=>{G.vt=Math.max(G.vt,w.vt);w.res()})}}
+  placeCamera(clock);setSun(dayT());updateFogVisuals(dt);renderTokens(dt);avalancheFx();
+  puffs.forEach(p=>{if(p.life<=0){p.s.material.opacity=0;return}p.life-=dt;p.s.position.addScaledVector(p.v,dt);
+    const k=1-p.life/p.max;p.s.scale.setScalar(p.size*(.6+k*1.4));p.s.material.opacity=.75*(1-k)});
+  if(snow.visible){const a=snowGeo.attributes.position;for(let i=0;i<SN;i++){let y=a.getY(i)-dt*(1.1+(i%7)*.12),x=a.getX(i)+dt*(.6+Math.sin(clock*.7+i)*.4);
+    if(y<0){y=24;x=(Math.random()-.5)*44}if(x>22)x-=44;a.setXY(i,x,y)}a.needsUpdate=true}
+  const top=Math.max(...G.tokens.map(t=>t.pos.y));$('#altV').textContent=metres(top).toLocaleString('en-US')+' m';
+  idleNudge();placeBubbles();drawDice();renderer.render(scene,camera);requestAnimationFrame(frame);
+}
+window.__game={get G(){return G}};
+resize();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{drawMap();mapTex.needsUpdate=true});
+newGame();requestAnimationFrame(frame);
+
+})();
+</script>

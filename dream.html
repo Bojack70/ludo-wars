@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ludo Wars Dream</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap">
+<style>
+/* Layout: full-bleed 3D board, a title strip and fold banner on top, the game dock (turn, dice, controls) pinned to the bottom. */
+:root{
+  --paper:#e9dfc4; --card:#f3ead2; --ink:#211c17; --muted:#6d6250; --line:rgba(33,28,23,.35); --accent:#b03a2e;
+  --font:"Patrick Hand","Comic Sans MS",cursive;
+  color-scheme:light;
+}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--font);overflow:hidden;margin:0}
+#app{position:relative;height:100%}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cap{position:absolute;top:8px;left:0;right:0;margin:0;text-align:center;font-size:16px;color:var(--muted);pointer-events:none;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#cap b{color:var(--ink);font-weight:inherit;font-size:22px;display:block}
+#cap,#cap b{text-shadow:0 0 3px var(--paper),0 0 8px var(--paper),0 0 14px var(--paper)}
+#cap{color:#c9d3e6}#cap b{color:#f4f6fb}#cap,#cap b{text-shadow:none!important}
+body[data-skin="blueprint"] #cap{color:#c9dcee;text-shadow:none}
+body[data-skin="blueprint"] #cap b{color:#f4f8fc;text-shadow:none}
+select{font:inherit;font-size:16px;color:var(--ink);background:#fbf6e6;border:1.5px solid var(--line);border-radius:8px;padding:5px 8px}
+/* soft focus: blur the top and bottom of the view like a miniature photo (backdrop-filter under a fading mask) */
+.dof{position:absolute;left:0;right:0;pointer-events:none;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#dofT{top:0;height:30%;mask-image:linear-gradient(#000 10%,transparent);-webkit-mask-image:linear-gradient(#000 10%,transparent)}
+#dofB{bottom:0;height:26%;mask-image:linear-gradient(transparent,#000 90%);-webkit-mask-image:linear-gradient(transparent,#000 90%)}
+body.sharp .dof{display:none}
+#panel{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.card{background:var(--card);border:2px solid var(--ink);border-radius:10px;box-shadow:3px 4px 0 rgba(33,28,23,.22);
+  padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:center;max-width:640px;width:100%;box-sizing:border-box}
+button{font:inherit;font-size:16px;line-height:1;color:var(--ink);background:#fbf6e6;border:1.5px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label{display:flex;align-items:center;gap:6px;font-size:16px;white-space:nowrap}
+.dock{gap:8px 16px}
+#turn{display:flex;align-items:center;gap:8px;font-size:19px;min-width:0}
+#chip{width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid var(--line)}
+#dice{width:68px;height:68px;cursor:pointer;flex:none}
+#dice:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:12px}
+#info{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
+#info b{color:var(--ink);font-weight:inherit;letter-spacing:.12em}
+#ask{display:flex;gap:8px}
+#ask[hidden],#banner[hidden],#bDrop[hidden],#tests[hidden]{display:none}
+#bSnooze[hidden]{display:none}
+#bSnooze{font-size:17px}
+.zz{position:absolute;transform:translate(-50%,-100%);pointer-events:none;font-family:var(--font);color:#f3ead2;font-size:18px;
+  text-shadow:0 0 3px #211c17,0 0 6px #211c17;white-space:nowrap}
+.zz span{display:inline-block;animation:zz 1.8s ease-in-out infinite}
+.zz span:nth-child(2){animation-delay:.3s;font-size:.8em}.zz span:nth-child(3){animation-delay:.6s;font-size:.65em}
+@keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(10px,-18px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.zz span{animation:none}}
+#bDrop{font-size:17px;background:var(--ink);color:var(--card);border-color:var(--ink)}
+#ask button{font-size:17px}
+#bClimb{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.row2{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:center;width:100%}
+#banner{position:absolute;top:58px;left:50%;transform:translateX(-50%);background:var(--card);border:2px solid var(--ink);border-radius:10px;
+  padding:8px 16px;font-size:20px;box-shadow:3px 4px 0 rgba(33,28,23,.22);text-align:center;max-width:calc(100% - 32px);box-sizing:border-box}
+#bubbles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.bub{position:absolute;transform:translate(-50%,-100%);background:var(--card);border:2px solid var(--ink);border-radius:8px;padding:4px 9px;
+  font-size:16px;line-height:1.15;max-width:190px;text-align:left;white-space:normal;box-shadow:2px 3px 0 rgba(33,28,23,.18)}
+.bub::after{content:"";position:absolute;left:50%;bottom:-9px;width:12px;height:12px;background:var(--card);border-right:2px solid var(--ink);
+  border-bottom:2px solid var(--ink);transform:translateX(-50%) rotate(45deg)}
+.bub i{display:block;width:100%;height:3px;border-radius:2px;margin-bottom:3px}
+input[type=range]{width:110px;accent-color:var(--ink)}
+input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
+.num{font-variant-numeric:tabular-nums;min-width:3.2em;color:var(--muted)}
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="Folding Ludo board look test"></canvas>
+  <div class="dof" id="dofT"></div><div class="dof" id="dofB"></div>
+  <p id="cap"><b>Ludo Wars · Dream</b>The Folded Map</p>
+  <div id="banner" hidden></div>
+  <div id="bubbles" aria-live="polite"></div>
+  <div id="zzz" aria-hidden="true"></div>
+  <div id="panel">
+    <div class="card dock">
+      <div id="turn"><span id="chip"></span><span id="turnText">Your turn</span></div>
+      <canvas id="dice" width="68" height="68" tabindex="0" role="button" aria-label="Roll the dice"></canvas>
+      <div id="info"><span>Last rolls <b id="hLast">-</b></span><span id="foldInfo">The map folds in 3 rounds</span></div>
+      <button id="bDrop" type="button" hidden>Drop from the ceiling</button>
+      <button id="bSnooze" type="button" hidden>Snooze</button>
+      <div id="ask" hidden><button id="bClimb" type="button">Climb the stairs</button><button id="bStay" type="button">Stay</button></div>
+      <div class="row2">
+        <button id="music" type="button" aria-pressed="false">Music: off</button>
+        <button id="bSpeed" type="button">Speed 1x</button>
+        <label for="soft"><input id="soft" type="checkbox" checked> Soft focus</label>
+        <select id="tests" aria-label="Stage a test scene"><option value="">Test a scene…</option><option value="drop">Ceiling drop</option><option value="snooze">Snooze (sleepwalk)</option></select>
+        <button id="bLevels" type="button" onclick="location.href='index.html'">Levels</button><button id="bNew" type="button">New game</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.150.1/three.min.js"></script>
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- board data (same 15x15 layout as the game) ----------
+const TRACK=[];
+for(let c=1;c<=5;c++)TRACK.push([c,6]);
+for(let r=5;r>=0;r--)TRACK.push([6,r]);
+TRACK.push([7,0]);
+for(let r=0;r<=5;r++)TRACK.push([8,r]);
+for(let c=9;c<=14;c++)TRACK.push([c,6]);
+TRACK.push([14,7]);
+for(let c=14;c>=9;c--)TRACK.push([c,8]);
+for(let r=9;r<=14;r++)TRACK.push([8,r]);
+TRACK.push([7,14]);
+for(let r=14;r>=9;r--)TRACK.push([6,r]);
+for(let c=5;c>=0;c--)TRACK.push([c,8]);
+TRACK.push([0,7]);TRACK.push([0,6]);
+const SAFE=new Set([0,8,13,21,26,34,39,47]),STARTS=[39,0,13,26];
+const SEATS=[
+  {name:'RED',ink:'#b0392d',base:[0,9],home:[[7,13],[7,12],[7,11],[7,10],[7,9]]},
+  {name:'GREEN',ink:'#3c7a3a',base:[0,0],home:[[1,7],[2,7],[3,7],[4,7],[5,7]]},
+  {name:'YELLOW',ink:'#c08d16',base:[9,0],home:[[7,1],[7,2],[7,3],[7,4],[7,5]]},
+  {name:'BLUE',ink:'#2d5a98',base:[9,9],home:[[13,7],[12,7],[11,7],[10,7],[9,7]]},
+];
+const SLOT=[[2,2],[4,2],[2,4],[4,4]];
+const INK='#211c17',PAPER='#f3ead2';
+const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const rgba=(h,a)=>{const[r,g,b]=hex(h);return`rgba(${r},${g},${b},${a})`};
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function starPath(c,x,y,r){c.beginPath();for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,rr=k%2?r*.45:r;c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr)}c.closePath()}
+
+// ---------- ink board texture (a port of the game's ink board) ----------
+// version B: the board sits on a sheet of paper with a one-cell margin, so the texture is 17 cells wide
+const CELL=96,TEX=CELL*17;
+const boardCanvas=document.createElement('canvas');boardCanvas.width=boardCanvas.height=TEX;
+// board designs: ink (the game's), A = ink city map at dusk, B = architect's blueprint; C overlays the endless stairs
+let SKIN='city',EXTRAS=false;
+function drawBoard(){
+  const c=boardCanvas.getContext('2d');
+  c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,TEX,TEX);
+  const R=rng(5);c.fillStyle='#f2eee6';c.fillRect(0,0,TEX,TEX);
+  for(let i=0;i<TEX*TEX/160;i++){c.fillStyle=`rgba(90,80,60,${R()*.06})`;c.fillRect(R()*TEX,R()*TEX,R()*3+.5,R()*3+.5)}
+  c.save();c.translate(CELL,CELL);({ink:drawInk,city:drawCity,blueprint:drawBlueprint})[SKIN](c);c.restore();
+}
+const cellList=()=>{const out=TRACK.map((p,i)=>({c:p[0],r:p[1],idx:i}));SEATS.forEach((s,si)=>s.home.forEach(([cc,rr])=>out.push({c:cc,r:rr,home:si})));return out};
+const TRI=[[[6,6],[6,9]],[[6,6],[9,6]],[[9,6],[9,9]],[[6,9],[9,9]]],TRI_SEAT=[1,2,3,0];
+// wobbly ink helpers bound to one canvas, one stroke colour and one seeded random stream
+function pen(c,R){
+  const cs=CELL,j=a=>(R()-.5)*a;
+  const ln=(x1,y1,x2,y2,lw)=>{c.lineWidth=lw||cs*.045;c.beginPath();c.moveTo(x1+j(cs*.035),y1+j(cs*.035));
+    c.quadraticCurveTo((x1+x2)/2+j(cs*.05),(y1+y2)/2+j(cs*.05),x2+j(cs*.035),y2+j(cs*.035));c.stroke()};
+  const box=(x,y,w,h,lw)=>{ln(x,y,x+w,y,lw);ln(x+w,y,x+w,y+h,lw);ln(x+w,y+h,x,y+h,lw);ln(x,y+h,x,y,lw)};
+  return{j,ln,box};
+}
+
+// A: the board as a city seen from above at dusk. Streets = track, blocks with rooftops = bases, plazas = stars, roundabout = centre
+function drawCity(c){
+  const cs=CELL,Bd=TEX,R=rng(21),{j,ln,box}=pen(c,R),INKC='#262a33';
+  const COL=['#b9655c','#5f8c6b','#c9a24f','#56739f'];
+  c.fillStyle='#cfd2d9';c.fillRect(0,0,Bd,Bd);
+  for(let i=0;i<Bd*Bd/140;i++){c.fillStyle=`rgba(40,48,70,${R()*.07})`;c.fillRect(R()*Bd,R()*Bd,R()*3+.6,R()*3+.6)}
+  c.strokeStyle=INKC;c.lineCap='round';c.lineJoin='round';
+  SEATS.forEach((s,si)=>{
+    const[bx,by]=s.base,x0=bx*cs,y0=by*cs,Rb=rng(300+si);
+    c.fillStyle=rgba(COL[si],.6);c.fillRect(x0,y0,6*cs,6*cs);
+    // rooftops on half-cell lots, leaving room for the four plazas and the name
+    for(let gx=0;gx<11;gx++)for(let gy=0;gy<10;gy++){
+      const lx=x0+(.25+gx*.5)*cs,ly=y0+(.25+gy*.5)*cs,cx=(lx+cs*.25)/cs-bx,cy=(ly+cs*.25)/cs-by;
+      if(SLOT.some(([sx,sy])=>Math.hypot(cx-sx,cy-sy)<.95))continue;
+      const roll=Rb();
+      if(roll<.12){c.fillStyle='rgba(84,112,82,.75)';c.beginPath();c.arc(lx+cs*.25,ly+cs*.25,cs*.17,0,Math.PI*2);c.fill();c.lineWidth=cs*.025;c.stroke();continue}
+      if(roll<.34)continue;
+      const ins=cs*(.03+Rb()*.05),w=cs*.5-ins*2;
+      c.fillStyle=Rb()<.5?rgba(COL[si],.85):'rgba(232,228,218,.95)';c.fillRect(lx+ins,ly+ins,w,w);
+      c.lineWidth=cs*.03;c.strokeRect(lx+ins,ly+ins,w,w);
+      if(Rb()<.4){c.fillStyle=INKC;c.fillRect(lx+ins+w*.6,ly+ins+w*.2,w*.18,w*.18)}
+      else if(Rb()<.3){c.beginPath();c.arc(lx+ins+w*.35,ly+ins+w*.6,w*.13,0,Math.PI*2);c.stroke()}
+    }
+    SLOT.forEach(([sx,sy])=>{const x=(bx+sx)*cs,y=(by+sy)*cs;
+      c.fillStyle='#e8e5dd';c.beginPath();c.arc(x,y,cs*.66,0,Math.PI*2);c.fill();c.lineWidth=cs*.045;c.stroke();
+      c.setLineDash([cs*.08,cs*.07]);c.lineWidth=cs*.025;c.beginPath();c.arc(x,y,cs*.46,0,Math.PI*2);c.stroke();c.setLineDash([])});
+    box(x0,y0,6*cs,6*cs,cs*.07);
+    c.fillStyle='rgba(232,228,218,.92)';c.fillRect((bx+1.2)*cs,(by+5.18)*cs,3.6*cs,.68*cs);
+    c.fillStyle=INKC;c.font=`${Math.round(cs*.56)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(s.name,(bx+3)*cs,(by+5.53)*cs);
+  });
+  for(const cell of cellList()){
+    const x=cell.c*cs,y=cell.r*cs,si=cell.home!=null?cell.home:STARTS.indexOf(cell.idx),vertical=cell.c>=6&&cell.c<=8;
+    c.fillStyle=si>=0?rgba(COL[si],.85):'#b9bec8';c.fillRect(x,y,cs,cs);
+    c.strokeStyle=rgba(INKC,.55);c.lineWidth=cs*.03;c.strokeRect(x,y,cs,cs);
+    // lane markings run along the street
+    c.strokeStyle='rgba(250,250,245,.85)';c.lineWidth=cs*.05;c.beginPath();
+    // home lanes get chevrons pointing in to the centre (the V's tip points down at angle 0)
+    if(cell.home!=null){c.save();c.translate(x+cs/2,y+cs/2);c.rotate([Math.PI,-Math.PI/2,0,Math.PI/2][cell.home]);
+      c.moveTo(-cs*.2,-cs*.08);c.lineTo(0,cs*.1);c.lineTo(cs*.2,-cs*.08);c.restore()}
+    else if(vertical){c.moveTo(x+cs/2,y+cs*.25);c.lineTo(x+cs/2,y+cs*.75)}else{c.moveTo(x+cs*.25,y+cs/2);c.lineTo(x+cs*.75,y+cs/2)}
+    c.stroke();c.strokeStyle=INKC;
+    if(cell.idx!=null&&SAFE.has(cell.idx)){
+      c.fillStyle='#e8e5dd';c.beginPath();c.arc(x+cs/2,y+cs/2,cs*.4,0,Math.PI*2);c.fill();c.lineWidth=cs*.035;c.stroke();
+      starPath(c,x+cs/2,y+cs/2,cs*.26);c.fillStyle=si>=0?rgba(COL[si],.9):'#9aa2b0';c.fill();c.lineWidth=cs*.025;c.stroke();
+    }
+  }
+  // zebra crossings where each street meets the roundabout
+  c.fillStyle='rgba(250,250,245,.9)';
+  for(let k=0;k<6;k++){const o=(6.12+k*.48)*cs;
+    c.fillRect(o,5.72*cs,cs*.26,cs*.22);c.fillRect(o,9.06*cs,cs*.26,cs*.22);
+    c.fillRect(5.72*cs,o,cs*.22,cs*.26);c.fillRect(9.06*cs,o,cs*.22,cs*.26)}
+  const m=7.5*cs;
+  TRI.forEach((pp,k)=>{c.beginPath();c.moveTo(pp[0][0]*cs,pp[0][1]*cs);c.lineTo(pp[1][0]*cs,pp[1][1]*cs);c.lineTo(m,m);c.closePath();
+    c.fillStyle=rgba(COL[TRI_SEAT[k]],.8);c.fill()});
+  c.fillStyle='#cfd2d9';c.beginPath();c.arc(m,m,cs*.95,0,Math.PI*2);c.fill();c.strokeStyle=INKC;c.lineWidth=cs*.05;c.stroke();
+  c.fillStyle='#7f9a80';c.beginPath();c.arc(m,m,cs*.58,0,Math.PI*2);c.fill();c.lineWidth=cs*.035;c.stroke();
+  c.fillStyle='#e8e5dd';c.fillRect(m-cs*.24,m-cs*.24,cs*.48,cs*.48);c.strokeRect(m-cs*.24,m-cs*.24,cs*.48,cs*.48);
+  c.beginPath();c.arc(m,m,cs*.15,0,Math.PI*2);c.stroke();c.beginPath();c.moveTo(m,m);c.lineTo(m,m-cs*.11);c.moveTo(m,m);c.lineTo(m+cs*.08,m);c.stroke();
+  box(cs*.06,cs*.06,Bd-cs*.12,Bd-cs*.12,cs*.09);
+}
+
+// B: the dream as an architect's drawing. Blue paper, white ink, floor plans for bases, a little maze in each
+function drawBlueprint(c){
+  const cs=CELL,Bd=TEX,R=rng(31),{ln,box}=pen(c,R),WL='#eaf3fb';
+  const COL=['#ff8f80','#7fe3a2','#ffd768','#a8dcff'];
+  c.fillStyle='#1f4d79';c.fillRect(0,0,Bd,Bd);
+  c.strokeStyle='rgba(234,243,251,.07)';c.lineWidth=1;
+  for(let v=0;v<=Bd;v+=cs/4){c.beginPath();c.moveTo(v,0);c.lineTo(v,Bd);c.moveTo(0,v);c.lineTo(Bd,v);c.stroke()}
+  c.strokeStyle='rgba(234,243,251,.14)';
+  for(let v=0;v<=Bd;v+=cs){c.beginPath();c.moveTo(v,0);c.lineTo(v,Bd);c.moveTo(0,v);c.lineTo(Bd,v);c.stroke()}
+  c.strokeStyle=WL;c.fillStyle=WL;c.lineCap='round';c.lineJoin='round';
+  SEATS.forEach((s,si)=>{
+    const[bx,by]=s.base,x0=bx*cs,y0=by*cs;
+    c.fillStyle=rgba(COL[si],.22);c.fillRect(x0,y0,6*cs,6*cs);
+    // double outer wall, inner room with a door swing
+    box(x0+cs*.12,y0+cs*.12,5.76*cs,5.76*cs,cs*.04);box(x0+cs*.26,y0+cs*.26,5.48*cs,5.48*cs,cs*.025);
+    c.strokeStyle=WL;box((bx+1)*cs,(by+1)*cs,4*cs,4*cs,cs*.04);
+    c.lineWidth=cs*.03;c.beginPath();c.arc((bx+1)*cs,(by+2.6)*cs,cs*.8,0,Math.PI/2);c.stroke();
+    SLOT.forEach(([sx,sy])=>{const x=(bx+sx)*cs,y=(by+sy)*cs;
+      c.fillStyle=rgba(COL[si],.35);c.beginPath();c.arc(x,y,cs*.6,0,Math.PI*2);c.fill();
+      c.lineWidth=cs*.04;c.beginPath();c.arc(x,y,cs*.6,0,Math.PI*2);c.stroke();
+      c.fillStyle=WL;[[0,-1],[1,0],[0,1],[-1,0]].forEach(([dx,dy])=>c.fillRect(x+dx*cs*.78-cs*.07,y+dy*cs*.78-cs*.07,cs*.14,cs*.14))});
+    // a tiny maze in the middle of the room
+    const mx=(bx+2.62)*cs,my=(by+2.62)*cs,ms=cs*.76,Rm=rng(50+si);c.lineWidth=cs*.022;c.strokeRect(mx,my,ms,ms);
+    for(let a=1;a<5;a++)for(let b=0;b<5;b++){const u=ms/5;if(Rm()<.5)ln(mx+a*u,my+b*u,mx+a*u,my+(b+1)*u,cs*.02);if(Rm()<.5)ln(mx+b*u,my+a*u,mx+(b+1)*u,my+a*u,cs*.02)}
+    // dimension line along the top of the room
+    c.lineWidth=cs*.02;const dy=(by+.62)*cs;ln((bx+1)*cs,dy,(bx+5)*cs,dy,cs*.02);
+    [[bx+1,1],[bx+5,-1]].forEach(([ax,d])=>{c.beginPath();c.moveTo(ax*cs,dy);c.lineTo(ax*cs+d*cs*.14,dy-cs*.07);c.moveTo(ax*cs,dy);c.lineTo(ax*cs+d*cs*.14,dy+cs*.07);c.stroke()});
+    c.fillStyle=WL;c.font=`${Math.round(cs*.3)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='bottom';c.fillText('4.00 m',(bx+3)*cs,dy-cs*.04);
+    c.font=`${Math.round(cs*.5)}px "Patrick Hand",cursive`;c.textBaseline='middle';c.fillText(s.name+' WING',(bx+3)*cs,(by+5.55)*cs);
+  });
+  for(const cell of cellList()){
+    const x=cell.c*cs,y=cell.r*cs,si=cell.home!=null?cell.home:STARTS.indexOf(cell.idx);
+    if(si>=0){c.fillStyle=rgba(COL[si],.4);c.fillRect(x,y,cs,cs);
+      c.save();c.beginPath();c.rect(x,y,cs,cs);c.clip();c.strokeStyle=rgba(COL[si],.7);c.lineWidth=cs*.025;
+      for(let h=-cs;h<cs;h+=cs*.22){c.beginPath();c.moveTo(x+h,y+cs);c.lineTo(x+h+cs,y);c.stroke()}c.restore()}
+    c.strokeStyle=WL;box(x,y,cs,cs,cs*.03);
+    if(cell.idx!=null&&SAFE.has(cell.idx)){starPath(c,x+cs/2,y+cs/2,cs*.32);c.lineWidth=cs*.035;c.stroke()}
+  }
+  const m=7.5*cs;
+  TRI.forEach((pp,k)=>{c.beginPath();c.moveTo(pp[0][0]*cs,pp[0][1]*cs);c.lineTo(pp[1][0]*cs,pp[1][1]*cs);c.lineTo(m,m);c.closePath();
+    c.fillStyle=rgba(COL[TRI_SEAT[k]],.35);c.fill();c.lineWidth=cs*.03;c.stroke()});
+  // compass rose
+  c.fillStyle='#1f4d79';c.beginPath();c.arc(m,m,cs*.62,0,Math.PI*2);c.fill();c.lineWidth=cs*.035;c.stroke();
+  c.beginPath();c.moveTo(m,m-cs*.52);c.lineTo(m+cs*.12,m);c.lineTo(m,m+cs*.52);c.lineTo(m-cs*.12,m);c.closePath();c.stroke();
+  c.fillStyle=WL;c.beginPath();c.moveTo(m,m-cs*.52);c.lineTo(m+cs*.12,m);c.lineTo(m-cs*.12,m);c.closePath();c.fill();
+  c.font=`${Math.round(cs*.32)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';c.fillText('N',m,m-cs*.75);
+  box(cs*.06,cs*.06,Bd-cs*.12,Bd-cs*.12,cs*.07);box(cs*.18,cs*.18,Bd-cs*.36,Bd-cs*.36,cs*.025);
+}
+
+// C: the four track squares under the floating staircase get small ink step marks and a dashed frame
+function drawStairs(c){
+  const cs=CELL,x0=10*cs,y0=6*cs,col=SKIN==='blueprint'?'#eaf3fb':'#211c17';
+  c.strokeStyle=col;c.lineCap='round';c.lineJoin='round';
+  c.lineWidth=cs*.035;c.setLineDash([cs*.12,cs*.08]);c.strokeRect(x0+cs*.06,y0+cs*.06,4*cs-cs*.12,cs-cs*.12);c.setLineDash([]);
+  for(let k=0;k<4;k++){
+    const x=x0+k*cs+cs*.2,y=y0+cs*.78,st=cs*.2;
+    c.lineWidth=cs*.04;c.beginPath();c.moveTo(x,y);
+    for(let q=0;q<3;q++){c.lineTo(x+q*st,y-(q+1)*st*.8);c.lineTo(x+(q+1)*st,y-(q+1)*st*.8)}
+    c.stroke();
+  }
+}
+
+function drawInk(c){
+  const cs=CELL,Bd=TEX,R=rng(11),j=a=>(R()-.5)*a;
+  c.fillStyle=PAPER;c.fillRect(0,0,Bd,Bd);
+  for(let i=0;i<Bd*Bd/120;i++){c.fillStyle=`rgba(110,85,45,${R()*.08})`;c.fillRect(R()*Bd,R()*Bd,R()*3+.6,R()*3+.6)}
+  const wash=(x,y,w,h,col,a)=>{for(let k=0;k<3;k++){const e=cs*.08;c.fillStyle=rgba(col,a*(k?.45:1));c.beginPath();
+    c.moveTo(x+j(e),y+j(e));c.lineTo(x+w+j(e),y+j(e));c.lineTo(x+w+j(e),y+h+j(e));c.lineTo(x+j(e),y+h+j(e));c.closePath();c.fill()}};
+  const ln=(x1,y1,x2,y2,lw)=>{c.lineWidth=lw||cs*.045;c.beginPath();c.moveTo(x1+j(cs*.04),y1+j(cs*.04));
+    c.quadraticCurveTo((x1+x2)/2+j(cs*.06),(y1+y2)/2+j(cs*.06),x2+j(cs*.04),y2+j(cs*.04));c.stroke()};
+  const box=(x,y,w,h,lw)=>{ln(x,y,x+w,y,lw);ln(x+w,y,x+w,y+h,lw);ln(x+w,y+h,x,y+h,lw);ln(x,y+h,x,y,lw)};
+  const circ=(x,y,r)=>{for(let k=0;k<2;k++){c.lineWidth=cs*(k?.03:.05);c.beginPath();c.ellipse(x+j(cs*.05),y+j(cs*.05),r+j(cs*.04),r+j(cs*.04),R()*3,0,Math.PI*2);c.stroke()}};
+  c.strokeStyle=INK;c.lineCap='round';c.lineJoin='round';
+  SEATS.forEach(s=>{
+    const[bx,by]=s.base;
+    wash(bx*cs,by*cs,6*cs,6*cs,s.ink,.4);
+    c.fillStyle=rgba(PAPER,.93);c.fillRect((bx+1)*cs,(by+1)*cs,4*cs,4*cs);
+    box((bx+1)*cs,(by+1)*cs,4*cs,4*cs);box(bx*cs,by*cs,6*cs,6*cs,cs*.07);
+    SLOT.forEach(([sx,sy])=>{c.fillStyle=rgba(s.ink,.28);c.beginPath();c.arc((bx+sx)*cs,(by+sy)*cs,cs*.62,0,Math.PI*2);c.fill();circ((bx+sx)*cs,(by+sy)*cs,cs*.62)});
+    c.fillStyle=INK;c.font=`${Math.round(cs*.62)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(s.name,(bx+3)*cs,(by+5.52)*cs);
+  });
+  const cells=TRACK.map((p,i)=>({c:p[0],r:p[1],idx:i}));SEATS.forEach((s,si)=>s.home.forEach(([cc,rr])=>cells.push({c:cc,r:rr,home:si})));
+  for(const cell of cells){
+    const x=cell.c*cs,y=cell.r*cs,si=cell.home!=null?cell.home:STARTS.indexOf(cell.idx);
+    if(si>=0)wash(x,y,cs,cs,SEATS[si].ink,.45);
+    box(x,y,cs,cs,cs*.035);
+    if(cell.idx!=null&&SAFE.has(cell.idx)){starPath(c,x+cs/2,y+cs/2,cs*.34);c.fillStyle=si>=0?rgba(PAPER,.7):rgba(INK,.12);c.fill();c.lineWidth=cs*.04;c.stroke()}
+  }
+  const m=7.5*cs,tri=[[[6,6],[6,9]],[[6,6],[9,6]],[[9,6],[9,9]],[[6,9],[9,9]]],triSeat=[1,2,3,0];
+  tri.forEach((pp,k)=>{c.beginPath();c.moveTo(pp[0][0]*cs,pp[0][1]*cs);c.lineTo(pp[1][0]*cs,pp[1][1]*cs);c.lineTo(m,m);c.closePath();
+    c.fillStyle=rgba(SEATS[triSeat[k]].ink,.5);c.fill();ln(pp[0][0]*cs,pp[0][1]*cs,m,m);ln(pp[1][0]*cs,pp[1][1]*cs,m,m)});
+  box(6*cs,6*cs,3*cs,3*cs,cs*.06);
+  box(cs*.06,cs*.06,Bd-cs*.12,Bd-cs*.12,cs*.09);
+}
+
+// ---------- ink soldier and building textures ----------
+// light=true draws the soldier in white ink for the dark blueprint board
+function soldierCanvas(col,light,sleep){
+  const W=128,H=192,cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const c=cv.getContext('2d'),h=170,INK=light?'#eef5fb':'#211c17',PAPER=light?'#1f4d79':'#f3ead2';
+  c.translate(W/2,H-6);
+  c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;const lw=h*.075;
+  c.fillStyle=rgba(col,.45);c.beginPath();c.ellipse(0,0,h*.3,h*.08,0,0,Math.PI*2);c.fill();
+  const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+  L(0,-h*.38,-h*.12,0);L(0,-h*.38,h*.12,0);L(0,-h*.38,0,-h*.66);
+  if(sleep){
+    // sleepwalker: rifle slung across the back, both arms straight out in front, eyes shut, a drooping nightcap
+    L(0,-h*.62,h*.3,-h*.6);L(0,-h*.6,h*.29,-h*.53);
+    const hy=-h*.78,hr=h*.12;
+    c.fillStyle=PAPER;c.beginPath();c.arc(0,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+    // a tall floppy nightcap that flops over to one side, pompom hanging by the ear
+    c.beginPath();c.moveTo(-hr*1.25,hy-hr*.3);c.quadraticCurveTo(-hr*.6,hy-hr*2.9,hr*1.1,hy-hr*2.3);
+    c.quadraticCurveTo(hr*2.2,hy-hr*1.9,hr*2,hy-hr*.9);c.quadraticCurveTo(hr*1.4,hy-hr*1.9,hr*.2,hy-hr*1.6);c.lineTo(hr*1.2,hy-hr*.3);c.closePath();
+    c.fillStyle=col;c.fill();c.lineWidth=lw*.8;c.stroke();
+    c.fillStyle=PAPER;c.beginPath();c.arc(hr*2,hy-hr*.75,hr*.48,0,Math.PI*2);c.fill();c.stroke();
+    c.fillStyle=PAPER;c.fillRect(-hr*1.3,hy-hr*.5,hr*2.6,hr*.32);c.strokeRect(-hr*1.3,hy-hr*.5,hr*2.6,hr*.32);
+    c.lineWidth=lw*.6;[-1,1].forEach(s=>{const x=s*hr*.35+hr*.22,y=hy+hr*.22;c.beginPath();c.moveTo(x-hr*.17,y);c.quadraticCurveTo(x,y+hr*.14,x+hr*.17,y);c.stroke()});
+    return cv;
+  }
+  L(-h*.2,-h*.36,h*.27,-h*.84,lw*1.25);L(0,-h*.63,-h*.1,-h*.44);L(0,-h*.63,h*.13,-h*.62);
+  const hy=-h*.8,hr=h*.12;
+  c.fillStyle=PAPER;c.beginPath();c.arc(0,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  c.beginPath();c.arc(0,hy-hr*.15,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
+  L(-hr*1.45,hy-hr*.12,hr*1.45,hy-hr*.12,lw*.9);
+  c.fillStyle=INK;[-1,1].forEach(s=>{c.beginPath();c.arc(s*hr*.35+hr*.22,hy+hr*.18,hr*.14,0,Math.PI*2);c.fill()});
+  return cv;
+}
+
+// ---------- three.js scene ----------
+const canvas=$('#c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xe9dfc4);
+scene.fog=new THREE.Fog(0x111827,45,110);
+const camera=new THREE.PerspectiveCamera(40,1,.1,200);
+scene.add(new THREE.AmbientLight(0xffffff,.62));
+const sun=new THREE.DirectionalLight(0xffffff,.62);sun.position.set(-6,14,8);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-14,right:14,top:14,bottom:-14,near:1,far:50});sun.shadow.bias=-.0006;scene.add(sun);
+
+const tex=c=>{const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=4;return t};
+drawBoard();
+const boardTex=tex(boardCanvas);
+
+// world: board 15x15 units in the XZ plane, centre at the origin; row r runs toward +z
+const Z0=6-7.5;                 // hinge line between row 5 and row 6
+const BAND=7;                   // rolling band = margin + rows 0-5; the whole band curls along one arc, like a scroll
+let fold=0;                     // radians
+
+// Any side can fold. Everything on the board lives in boardRoot, whose local frame always has the folding side at the
+// top (z < Z0). For side k the board is re-mapped by a quarter turn k times, and boardRoot is turned back by the same
+// amount, so the board never moves on the table; only which side counts as "far" changes (and the camera swings to it).
+let SIDE=0;
+const boardRoot=new THREE.Group();scene.add(boardRoot);
+const turn=(x,z,q)=>{const a=q*Math.PI/2,c=Math.round(Math.cos(a)),n=Math.round(Math.sin(a));return[x*c+z*n,-x*n+z*c]};
+const toLocal=(x,z)=>turn(x,z,SIDE),toBoard=(x,z)=>turn(x,z,-SIDE);
+function stripGeom(rowFrom,rowTo,seg){
+  const g=new THREE.BufferGeometry(),n=(seg+1)*2;
+  const pos=new Float32Array(n*3),uv=new Float32Array(n*2),idx=[];
+  for(let k=0;k<=seg;k++){
+    const row=rowFrom+(rowTo-rowFrom)*k/seg;
+    for(let s=0;s<2;s++){const i=k*2+s;pos[i*3]=s?8.5:-8.5;pos[i*3+1]=0;pos[i*3+2]=row-7.5;uv[i*2]=s;uv[i*2+1]=1-(row+1)/17}
+    if(k<seg){const a=k*2;idx.push(a,a+2,a+1,a+1,a+2,a+3)}
+  }
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('uv',new THREE.BufferAttribute(uv,2));g.setIndex(idx);
+  g.computeVertexNormals();return g;
+}
+const mat=new THREE.MeshLambertMaterial({map:boardTex,side:THREE.DoubleSide});
+const flat=new THREE.Mesh(stripGeom(6,16,1),mat);flat.receiveShadow=true;boardRoot.add(flat);
+const SEG=80,bandGeom=stripGeom(6,-1,SEG);   // k=0 at the hinge, k=SEG at the far edge
+const band=new THREE.Mesh(bandGeom,mat);band.castShadow=band.receiveShadow=true;boardRoot.add(band);
+// texture coordinates follow the side: a local (flat) point shows the board square that sits there after the turn
+function mapUVs(g,rowFrom,rowTo,seg){
+  const uv=g.attributes.uv;
+  for(let k=0;k<=seg;k++){const row=rowFrom+(rowTo-rowFrom)*k/seg;
+    for(let s=0;s<2;s++){const[bx,bz]=toBoard(s?8.5:-8.5,row-7.5);uv.setXY(k*2+s,(bx+8.5)/17,1-(bz+8.5)/17)}}
+  uv.needsUpdate=true;
+}
+function applySide(k){
+  SIDE=k;boardRoot.rotation.y=-k*Math.PI/2;
+  mapUVs(flat.geometry,6,16,1);mapUVs(bandGeom,6,-1,SEG);
+}
+// the sheet has thickness, and lies on a navy table
+const sheetEdge=new THREE.Mesh(new THREE.BoxGeometry(17,.08,10),new THREE.MeshLambertMaterial({color:0xe6e1d6}));
+sheetEdge.position.set(0,-.045,3.5);sheetEdge.receiveShadow=true;boardRoot.add(sheetEdge);
+const table=new THREE.Mesh(new THREE.PlaneGeometry(140,140),new THREE.MeshLambertMaterial({color:0x1a2438}));
+table.rotation.x=-Math.PI/2;table.position.y=-.09;table.receiveShadow=true;scene.add(table);
+// a soft shadow on the board under the lifted band
+const shadowTex=(()=>{const c=document.createElement('canvas');c.width=64;c.height=64;const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,'rgba(33,28,23,.35)');gr.addColorStop(1,'rgba(33,28,23,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);return tex(c)})();
+const shadow=new THREE.Mesh(new THREE.PlaneGeometry(17,4),new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
+shadow.rotation.x=-Math.PI/2;shadow.position.set(0,.01,Z0+2);shadow.visible=false;boardRoot.add(shadow);
+
+// where a flat board point ends up once the band is folded: position and surface normal
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+function surf(x,z){
+  if(z>=Z0||fold<1e-4)return{p:V(x,0,z),n:V(0,1,0)};
+  // peel: the part nearer the hinge than s0 stays flat; the bend starts at the far edge and travels inward as the roll grows
+  const s=Z0-z,prog=Math.min(1,fold/MAXF),s0=BAND*.85*(1-prog);
+  if(s<=s0)return{p:V(x,0,z),n:V(0,1,0)};
+  const Rr=(BAND-s0)/fold,a=(s-s0)/Rr,zs=Z0-s0;
+  return{p:V(x,Rr*(1-Math.cos(a)),zs-Rr*Math.sin(a)),n:V(0,Math.cos(a),Math.sin(a))};
+}
+function updateBand(){
+  const pos=bandGeom.attributes.position;
+  for(let k=0;k<=SEG;k++){const z=Z0-BAND*k/SEG;for(let s=0;s<2;s++){const q=surf(s?8.5:-8.5,z).p;pos.setXYZ(k*2+s,q.x,q.y,q.z)}}
+  pos.needsUpdate=true;bandGeom.computeVertexNormals();bandGeom.computeBoundingSphere();
+  shadow.material.opacity=Math.min(1,fold/1.2);
+}
+
+// soldiers: flat cut-outs that stand along the surface normal and turn to face the camera
+const soldierGeom=new THREE.PlaneGeometry(.85,1.28);soldierGeom.translate(0,.62,0);
+const soldierTex={dark:SEATS.map(s=>tex(soldierCanvas(s.ink,false))),light:SEATS.map(s=>tex(soldierCanvas(s.ink,true)))};
+const soldierMats=SEATS.map((s,i)=>new THREE.MeshBasicMaterial({map:soldierTex.dark[i],transparent:true,alphaTest:.4,side:THREE.DoubleSide}));
+const sleepTex={dark:SEATS.map(s=>tex(soldierCanvas(s.ink,false,true))),light:SEATS.map(s=>tex(soldierCanvas(s.ink,true,true)))};
+const sleepMats=SEATS.map((s,i)=>new THREE.MeshBasicMaterial({map:sleepTex.dark[i],transparent:true,alphaTest:.4,side:THREE.DoubleSide}));
+const soldiers=[];
+function addSoldier(seat,place){const m=new THREE.Mesh(soldierGeom,soldierMats[seat]);boardRoot.add(m);const o={m,seat,...place};soldiers.push(o);return o}
+const _f=new THREE.Vector3(),_r=new THREE.Vector3(),_m=new THREE.Matrix4();
+function placeSoldier(o,time,marching){
+  let fx,fz,hop=0;
+  if(o.walk!=null){
+    const t=marching?(o.walk+time*o.speed+o.phase)%52:o.walk,i=Math.floor(t),k=t-i;
+    const a=TRACK[i],b=TRACK[(i+1)%52],step=Math.min(1,k*1.6);
+    fx=a[0]+(b[0]-a[0])*step;fz=a[1]+(b[1]-a[1])*step;
+    hop=marching?Math.sin(Math.min(1,k*1.6)*Math.PI)*.35:0;
+  }else{fx=o.fx;fz=o.fz}
+  const[lx,lz]=toLocal(fx+.5-7.5-(o.walk==null?.5:0),fz+.5-7.5-(o.walk==null?.5:0)),q=surf(lx,lz);
+  o.m.position.copy(q.p).addScaledVector(q.n,.02+hop);
+  // basis: up = surface normal, forward = toward the camera flattened onto the surface
+  _f.copy(camLocal).sub(o.m.position);_f.addScaledVector(q.n,-_f.dot(q.n));
+  if(_f.lengthSq()<1e-6)_f.set(0,0,1);_f.normalize();
+  _r.crossVectors(q.n,_f).normalize();
+  _m.makeBasis(_r,q.n,_f);o.m.quaternion.setFromRotationMatrix(_m);
+}
+
+// the sky map: a faint upside-down copy of the board overhead, slowly turning (towers were tried and cut 2026-10-19)
+// it hangs behind and above the board, tipped to face down at the viewer, so it stays in frame at every camera angle
+const city=new THREE.Group();scene.add(city);
+city.position.set(0,10,-24);city.rotation.x=.95;
+const ceiling=new THREE.Mesh(new THREE.PlaneGeometry(46,46),new THREE.MeshBasicMaterial({map:boardTex,transparent:true,opacity:.3,side:THREE.DoubleSide}));
+city.add(ceiling);
+
+// C extras: mirrored copies of the board receding on every side (fog fades them) and a spinning top on the centre
+const extras=new THREE.Group();scene.add(extras);
+for(let ix=-1;ix<=1;ix++)for(let iz=-1;iz<=1;iz++){
+  if(!ix&&!iz)continue;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(17,17),new THREE.MeshBasicMaterial({map:boardTex,transparent:true,opacity:.16,side:THREE.DoubleSide,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.set(ix*17.6,-.05,iz*17.6);m.scale.set(ix?-1:1,iz?-1:1,1);extras.add(m);
+}
+const top=new THREE.Group(),spinner=new THREE.Group();top.add(spinner);
+const topMat=new THREE.MeshLambertMaterial({color:0xe8dcbc});
+const cone=new THREE.Mesh(new THREE.ConeGeometry(.42,.62,24),topMat);cone.rotation.x=Math.PI;cone.position.y=.31;
+const disc=new THREE.Mesh(new THREE.CylinderGeometry(.44,.44,.1,24),topMat);disc.position.y=.66;
+const stem=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.36,12),topMat);stem.position.y=.88;
+[cone,disc,stem].forEach(m=>{spinner.add(m);const e=new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry,20),new THREE.LineBasicMaterial({color:0x211c17}));
+  e.position.copy(m.position);e.rotation.copy(m.rotation);spinner.add(e)});
+// stripes so the spin is visible
+for(let k=0;k<3;k++){const s=new THREE.Mesh(new THREE.BoxGeometry(.05,.11,.9),new THREE.MeshBasicMaterial({color:0xb0392d}));s.position.y=.66;s.rotation.y=k*Math.PI/3;spinner.add(s)}
+extras.add(top);
+
+// the staircase bridge (the pre-video design, restored 2026-10-19 after the video-style formation was parked):
+// white paper steps climbing from the flat half of the map up onto the rolled page, so the track below joins the track
+// above. It builds up one step at a time once the page is high enough and folds away before the page unrolls.
+// (The video-style version is saved as research/ludo-dream-parked/ludo-dream-lab-b.v8-video-stairs.html.)
+const BR_N=10,BR_FROM=V(5+.5-7.5,0,6+.5-7.5),BR_TO_CELL=[8,2];   // foot (5,6) -> top (8,2): 10 squares forward
+const stepMat=new THREE.MeshLambertMaterial({color:0xf6f3ec}),inkLine=new THREE.LineBasicMaterial({color:0x211c17});
+const bridge=new THREE.Group();boardRoot.add(bridge);   // defined in the local frame, so it always links the flat half to the rolled side
+const unitBox=new THREE.BoxGeometry(1,1,1),unitEdges=new THREE.EdgesGeometry(unitBox);
+const brSteps=[...Array(BR_N+1)].map(()=>{const g=new THREE.Group(),m=new THREE.Mesh(unitBox,stepMat);m.castShadow=m.receiveShadow=true;
+  g.add(m);g.add(new THREE.LineSegments(unitEdges,inkLine));bridge.add(g);return g});
+let brOn=false,brBuild=0,brDt=0;
+const smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
+function updateBridge(){
+  const q=surf(BR_TO_CELL[0]+.5-7.5,BR_TO_CELL[1]+.5-7.5);
+  // build progress: steps appear one by one once the page is high enough; in the dream they retract before unrolling
+  const want=bridgeWanted&&q.p.y>1?1:0;
+  brBuild=Math.max(0,Math.min(1,brBuild+(want?1:-1)*brDt/1.3));
+  brOn=brBuild>0&&q.p.y>.3;bridge.visible=brOn;if(!brOn)return;
+  const dx=q.p.x-BR_FROM.x,dz=q.p.z-BR_FROM.z,L=Math.hypot(dx,dz),ang=Math.atan2(dx,dz),run=L/BR_N;
+  brSteps.forEach((g,k)=>{
+    const last=k===BR_N,full=last?q.p.y:q.p.y*(k+1)/(BR_N+1),f=last?1:(k+.5)/BR_N;
+    const grow=Math.max(0,Math.min(1,brBuild*(BR_N+1)-k)),e=1-Math.pow(1-grow,3),h=Math.max(.01,full*e);
+    g.visible=grow>0;g.scale.set(.9*(.6+.4*e),h,last?.5:run+.01);g.rotation.y=ang;
+    g.position.set(BR_FROM.x+dx*f,h/2,BR_FROM.z+dz*f);
+  });
+}
+// small pop-up houses on the base blocks (city board only); the ones on the rolling half ride along with the page
+const houses=new THREE.Group();boardRoot.add(houses);
+const HCOL=['#b9655c','#5f8c6b','#c9a24f','#56739f'];
+const wallMat=new THREE.MeshLambertMaterial({color:0xefeae0});
+const roofMats=HCOL.map(c=>new THREE.MeshLambertMaterial({color:new THREE.Color(c)}));
+const houseList=[];
+SEATS.forEach((st,si)=>{
+  const[bx,by]=st.base,Rh=rng(700+si),placed=[];
+  for(let tries=0;tries<200&&placed.length<9;tries++){
+    const cx=bx+.6+Rh()*4.8,cz=by+.6+Rh()*4.3;
+    if(SLOT.some(([sx,sy])=>Math.hypot(cx-(bx+sx),cz-(by+sy))<1.05))continue;
+    if(placed.some(p=>Math.hypot(p[0]-cx,p[1]-cz)<.8))continue;
+    placed.push([cx,cz]);
+    const w=.42+Rh()*.2,d=.36+Rh()*.14,h=.22+Rh()*.22,rh=.18+Rh()*.08,rot=Rh()<.5?0:Math.PI/2;
+    const g=new THREE.Group(),body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);body.position.y=h/2;body.castShadow=true;
+    const shape=new THREE.Shape();shape.moveTo(-w/2-.03,0);shape.lineTo(w/2+.03,0);shape.lineTo(0,rh);shape.closePath();
+    const rg=new THREE.ExtrudeGeometry(shape,{depth:d+.04,bevelEnabled:false});rg.translate(0,h,-(d+.04)/2);
+    const roof=new THREE.Mesh(rg,roofMats[si]);roof.castShadow=true;
+    g.add(body,roof,new THREE.LineSegments(new THREE.EdgesGeometry(body.geometry),inkLine),new THREE.LineSegments(new THREE.EdgesGeometry(rg,30),inkLine));
+    g.children[2].position.y=h/2;
+    const inner=new THREE.Group();inner.rotation.y=rot;inner.add(g);houses.add(inner);
+    houseList.push({o:inner,x:cx-7.5,z:cz-7.5});
+  }
+});
+const _hx=V(1,0,0),_hz=new THREE.Vector3(),_hm=new THREE.Matrix4(),_hq=new THREE.Quaternion(),_hr=new THREE.Quaternion();
+function placeHouses(){
+  for(const hs of houseList){
+    const[lx,lz]=toLocal(hs.x,hs.z),q=surf(lx,lz);hs.o.position.copy(q.p);
+    _hz.crossVectors(_hx,q.n);_hm.makeBasis(_hx,q.n,_hz);_hq.setFromRotationMatrix(_hm);
+    hs.o.quaternion.copy(_hq).multiply(_hr.setFromAxisAngle(V(0,1,0),(hs.o.userData.rot??(hs.o.userData.rot=hs.o.rotation.y))+SIDE*Math.PI/2));
+  }
+}
+
+// version B always sits on the navy table, whatever the board design
+const SKIN_BG={ink:0x111827,city:0x111827,blueprint:0x111827};
+function applySkin(){
+  drawBoard();boardTex.needsUpdate=true;
+  scene.background.setHex(SKIN_BG[SKIN]);scene.fog.color.setHex(SKIN_BG[SKIN]);
+  soldierMats.forEach((m,i)=>{m.map=soldierTex[SKIN==='blueprint'?'light':'dark'][i];m.needsUpdate=true});
+  sleepMats.forEach((m,i)=>{m.map=sleepTex[SKIN==='blueprint'?'light':'dark'][i];m.needsUpdate=true});
+  extras.visible=EXTRAS;document.body.dataset.skin=SKIN;
+  houses.visible=SKIN==='city';
+}
+
+// ---------- camera, input and the dream loop ----------
+// a three-quarter view by default: straight on, a 90° wall reads as more flat board
+let tilt=48,yaw=.6,auto=false,drag=null;
+function resize(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+}
+addEventListener('resize',resize);
+// the camera glides: it pushes in and looks up into the roll as the page rises, then eases back out.
+// Every camera value chases its target with smoothing, so nothing snaps.
+const cam={dist:26,look:0,lookZ:-.6};
+function placeCamera(time,dt){
+  const prog=Math.min(1,fold/MAXF),e=prog*prog*(3-2*prog),aspect=camera.aspect;
+  const tDist=26*Math.max(1,1/(aspect*1.15))*(1-.3*e),tLook=e*3,tLookZ=-.6-e*1.6;
+  const k=Math.min(1,dt*1.8);cam.dist+=(tDist-cam.dist)*k;cam.look+=(tLook-cam.look)*k;cam.lookZ+=(tLookZ-cam.lookZ)*k;
+  const el=tilt*Math.PI/180,az=yaw+camOff+(auto&&!drag?Math.sin(time*.13)*.1:0);
+  // the look target turns with the fold side, so it always points into the roll
+  const[tx,tz]=turn(0,cam.lookZ,-SIDE);
+  camera.position.set(Math.sin(az)*Math.cos(el)*cam.dist,Math.sin(el)*cam.dist,Math.cos(az)*Math.cos(el)*cam.dist);
+  camera.lookAt(tx,cam.look,tz);
+}
+canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,yaw,tilt,moved:0};canvas.setPointerCapture(e.pointerId);canvas.style.cursor='grabbing'});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;drag.moved=Math.max(drag.moved,Math.hypot(e.clientX-drag.x,e.clientY-drag.y));if(drag.moved<6)return;yaw=drag.yaw-(e.clientX-drag.x)*.006;baseTilt=Math.max(28,Math.min(88,drag.tilt+(e.clientY-drag.y)*.15))});
+const endDrag=e=>{const tap=drag&&drag.moved<6;drag=null;canvas.style.cursor='grab';if(tap&&e.type==='pointerup')onTap(e)};
+canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
+
+// the fold is driven by the game (every 3 rounds a random side rolls up for one round), not by a demo loop
+const MAXF=200*Math.PI/180;   // rolls past vertical into a scroll
+const sine=x=>.5-.5*Math.cos(Math.PI*x);
+let bridgeWanted=false,baseTilt=48;
+
+// ---------- music for this stage: an original ticking-clock score, generated live (no audio files) ----------
+// A tick-tock over a low organ-like chord. The deeper the map folds, the slower the clock ticks and the brighter the
+// drone gets, so time seems to stretch inside the dream. Browsers only allow sound after a click, so it starts off.
+const music={ctx:null,on:false,next:0,beat:0,timer:null,master:null,filter:null,drone:[]};
+function musicStart(){
+  if(!music.ctx){
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;
+    const a=music.ctx=new AC();
+    music.master=a.createGain();music.master.gain.value=0;music.master.connect(a.destination);
+    music.filter=a.createBiquadFilter();music.filter.type='lowpass';music.filter.frequency.value=500;music.filter.Q.value=.7;
+    music.filter.connect(music.master);
+    // A minor-ish organ chord: each note is a sine plus a soft octave, with a slow tremolo
+    [[110,.5],[164.81,.32],[220,.26],[261.63,.18]].forEach(([f,v],i)=>{
+      const g=a.createGain();g.gain.value=v*.16;g.connect(music.filter);
+      [1,2].forEach(m=>{const o=a.createOscillator();o.type=m===1?'sine':'triangle';o.frequency.value=f*m*(1+(i%2?.0015:-.0015));
+        const og=a.createGain();og.gain.value=m===1?1:.25;o.connect(og).connect(g);o.start()});
+      const lfo=a.createOscillator(),lg=a.createGain();lfo.frequency.value=.07+i*.031;lg.gain.value=v*.05;lfo.connect(lg).connect(g.gain);lfo.start();
+      music.drone.push(g);
+    });
+    music.noise=a.createBuffer(1,a.sampleRate*.05,a.sampleRate);
+    const d=music.noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);
+  }
+  const a=music.ctx;if(a.state==='suspended')a.resume();
+  music.master.gain.cancelScheduledValues(a.currentTime);music.master.gain.setTargetAtTime(.9,a.currentTime,.8);
+  music.on=true;music.next=a.currentTime+.15;
+  // look-ahead scheduler: queue ticks a little ahead of time so they stay steady even if a frame is late
+  music.timer=setInterval(scheduleTicks,60);
+  return true;
+}
+function musicStop(){
+  if(!music.ctx)return;music.on=false;clearInterval(music.timer);
+  music.master.gain.setTargetAtTime(0,music.ctx.currentTime,.35);
+}
+function tick(at,tock){
+  const a=music.ctx,src=a.createBufferSource();src.buffer=music.noise;
+  const bp=a.createBiquadFilter();bp.type='bandpass';bp.frequency.value=tock?2600:1700;bp.Q.value=6;
+  const g=a.createGain();g.gain.value=tock?.32:.42;src.connect(bp).connect(g).connect(music.master);src.start(at);
+  // a small woody body under each tick
+  const o=a.createOscillator(),og=a.createGain();o.type='sine';o.frequency.setValueAtTime(tock?720:540,at);
+  og.gain.setValueAtTime(.12,at);og.gain.exponentialRampToValueAtTime(.0001,at+.07);o.connect(og).connect(music.master);o.start(at);o.stop(at+.08);
+}
+function scheduleTicks(){
+  const a=music.ctx;if(!music.on)return;
+  const depth=Math.min(1,fold/MAXF);
+  while(music.next<a.currentTime+.25){
+    tick(music.next,music.beat%2===1);music.beat++;
+    music.next+=1.0*(1+.9*depth)*(foldWarn?.55:1);   // one tick a second when flat, slower deep in the fold, quicker while a fold is announced
+  }
+}
+function musicFollowDream(){
+  if(!music.on)return;const a=music.ctx,depth=Math.min(1,fold/MAXF);
+  music.filter.frequency.setTargetAtTime(420+1500*depth,a.currentTime,.4);
+  music.drone.forEach((g,i)=>{if(i===3)g.gain.setTargetAtTime(.18*.16*(.4+depth*1.2),a.currentTime,.6)});
+}
+$('#music').onclick=e=>{
+  if(music.on){musicStop();e.target.textContent='Music: off';e.target.setAttribute('aria-pressed','false')}
+  else if(musicStart()){e.target.textContent='Music: on';e.target.setAttribute('aria-pressed','true')}
+};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&music.on){musicStop();$('#music').textContent='Music: off';$('#music').setAttribute('aria-pressed','false')}});
+
+// =====================================================================================================================
+// the game: classic Ludo rules + the dream rules (The Fold, the Staircase Bridge, Waking Up). You (Red) vs 3 bots.
+// Board coordinates are the game's (cell centre = c+.5); everything is drawn through toLocal + surf, so soldiers on a
+// folded side ride the roll automatically.
+// =====================================================================================================================
+let clock=0,last=performance.now(),camOff=0;
+const camLocal=new THREE.Vector3();
+$('#soft').onchange=e=>{document.body.classList.toggle('sharp',!e.target.checked)};
+const START=[39,0,13,26],FIN=[[7.5,8.25],[6.75,7.5],[7.5,6.75],[8.25,7.5]],FIN_OFF=[[-.22,-.18],[.22,-.18],[-.22,.2],[.22,.2]];
+const SIDE_NAMES=['Green + Yellow','Yellow + Blue','Blue + Red','Red + Green'];
+let TEAM='';try{const t=JSON.parse(localStorage.getItem('lw.teams'));if(Array.isArray(t)&&t[0])TEAM=String(t[0]).slice(0,14)}catch(e){}
+const NAMES=[TEAM||'You','Sgt. Green','Cpl. Yellow','Pvt. Blue'];
+const COLS=SEATS.map(s=>s.ink);
+const LINES={
+  capAtk:["Nothing personal. Okay, a little personal.","Back to bed, rookie.","Sweet dreams.","This square has a strict no-guests policy.","Should've rolled faster.","Wake up and smell the defeat."],
+  wake:["Wait... was any of that real?","I was winning in my dream.","Five more minutes...","Who put my bed in the base?","I dreamt I was a pancake.","Was I... sleepwalking?"],
+  six:["Six! Somebody call the press.","Finally, a real number.","The dice likes me. Finally."],
+  out:["Reporting for duty!","Fresh air at last.","Okay. Who's first?"],
+  stuck:["Is the dice even plugged in?","We've been in here so long we started a book club.","Any day now, General."],
+  three:["Three sixes? Suspicious. Turn cancelled.","Court-martialled for being too lucky."],
+  home:["Made it! Never doing that again.","Home sweet home. Where are the snacks?","Mission complete. Nap commencing."],
+  win:["Victory! Medals for everyone. Well, for us.","Write this down, historians."],
+  noMove:["Nowhere to go. Classic.","We'll just... stand here."],
+  foldWarn:["Is the floor... moving?","Hold onto something. Anything.","I don't like where this is going."],
+  foldNow:["The sky is made of board!","Gravity is optional now.","I'm on the ceiling and I've never felt better."],
+  unfold:["Back to normal. Mostly.","Did anyone else see that?"],
+  climb:["Stairs! In a board game!","Shortcut through the dream!","Who builds stairs out of a map?"],
+  snooze:["Five more minutes...","Not now, I'm sleeping.","Honk-shoo... honk-shoo...","Zzz... charge... zzz...","Mum, I don't want to go to war today."],
+  sleepSeen:["Never wake a sleepwalker. It's in the rules.","Is he... asleep?","Don't make any sudden moves.","Is that a nightcap? In a WAR?"],
+  wakeWalk:["Where am I? Why am I wearing a nightcap?","Who moved me?!","I had the strangest dream..."],
+  dropGo:["Wait... gravity works up here?","Don't look down. I looked down.","Who taught physics to a dream?","Geronimooo!","I'm going to regret this.","Ceiling's nice. Floor's closer."],
+  dropLand:["Nailed it.","Ow. Floors.","Ten out of ten. Would fall again.","Special delivery from upstairs!"],
+  dropSquash:["Incoming from the ceiling!","Look up. Too late.","Did it rain soldiers? It rained soldiers."],
+};
+const recent=[];
+function line(pool){const o=LINES[pool].filter(l=>!recent.includes(l)),a=o.length?o:LINES[pool],l=a[Math.floor(Math.random()*a.length)];recent.push(l);if(recent.length>12)recent.shift();return l}
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+// ---------- small sound effects (Web Audio, only after the first tap) ----------
+let SFX=null,SPEED=1;
+function sctx(){if(!SFX){try{SFX=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(SFX&&SFX.state==='suspended')SFX.resume();return SFX}
+function tone(f,d,type='sine',v=.15,slide=0,delay=0){const a=SFX;if(!a)return;const t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f*slide),t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(a.destination);o.start(t);o.stop(t+d+.03)}
+const sfx={rattle(){for(let i=0;i<5;i++)tone(2400+Math.random()*900,.03,'square',.03,0,i*.07)},step(){tone(220+Math.random()*60,.05,'triangle',.07)},
+  pop(){tone(880,.06,'sine',.05,1.5)},thump(){tone(130,.3,'sine',.45,.35)},cheer(){[523,659,784,1047].forEach((f,i)=>tone(f,.2,'triangle',.11,0,i*.09))},
+  snore(){tone(95,.5,'sawtooth',.05,1.3);tone(140,.45,'sine',.04,.6,.55)},
+  whistle(){tone(1500,1,'sine',.06,.35)},
+  chime(){[784,659,523,392].forEach((f,i)=>tone(f,.5,'sine',.09,0,i*.18))},yawn(){tone(330,.7,'sine',.08,.55)},whoosh(){tone(180,.6,'sawtooth',.03,2.5)}};
+
+// ---------- state ----------
+let G;
+function newState(){
+  return{tokens:[],turn:0,round:1,gt:0,waiters:[],awaitRoll:null,awaitPick:null,awaitClimb:null,selectable:[],
+    dice:{v:6,rolling:false,seat:0},hist:[[],[],[],[]],drought:[0,0,0,0],over:false,winner:-1,phase:'roll',
+    foldState:'flat',nextSide:0,bubbles:[],foldAnim:null,dropBy:[0,0,0,0]};
+}
+const wait=sec=>new Promise(res=>G.waiters.push({t:G.gt+sec,res}));
+
+// soldiers: one 3D cut-out per token, a selection ring, and a bed per seat for Waking Up
+const ringGeo=new THREE.RingGeometry(.34,.44,32);ringGeo.rotateX(-Math.PI/2);
+const beds=SEATS.map((st,si)=>{const g=new THREE.Group(),frame=new THREE.Mesh(new THREE.BoxGeometry(.95,.12,.6),stepMat),
+  pillow=new THREE.Mesh(new THREE.BoxGeometry(.24,.07,.42),new THREE.MeshLambertMaterial({color:0xffffff})),
+  blanket=new THREE.Mesh(new THREE.BoxGeometry(.6,.05,.62),new THREE.MeshLambertMaterial({color:new THREE.Color(COLS[si])}));
+  frame.position.y=.06;pillow.position.set(-.33,.15,0);blanket.position.set(.15,.14,0);g.add(frame,pillow,blanket);
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(frame.geometry),inkLine));g.children[3].position.y=.06;
+  g.visible=false;boardRoot.add(g);return g});
+function makeTokens(){
+  soldiers.forEach(o=>boardRoot.remove(o.m));soldiers.length=0;
+  for(let s=0;s<4;s++)for(let i=0;i<4;i++){
+    const o=addSoldier(s,{fx:0,fz:0});o.custom=true;
+    const ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.9}));ring.visible=false;boardRoot.add(ring);
+    G.tokens.push({seat:s,i,p:-1,o,m:o.m,ring,anim:null,seed:s*4+i+1,lie:0,scale:1});
+  }
+}
+
+// ---------- positions (board coordinates) ----------
+const idxOf=t=>(START[t.seat]+t.p)%52;
+function posAt(seat,p,i){
+  if(p<0){const[bx,by]=SEATS[seat].base;return{x:bx+SLOT[i][0],z:by+SLOT[i][1]}}
+  if(p<=50){const[c,r]=TRACK[(START[seat]+p)%52];return{x:c+.5,z:r+.5}}
+  if(p<=55){const[c,r]=SEATS[seat].home[p-51];return{x:c+.5,z:r+.5}}
+  return{x:FIN[seat][0]+FIN_OFF[i][0],z:FIN[seat][1]+FIN_OFF[i][1]};
+}
+const posOf=t=>posAt(t.seat,t.p,t.i);
+// a board point -> where it is on the (possibly folded) map, in boardRoot's local frame
+function onMap(x,z){const[lx,lz]=toLocal(x-7.5,z-7.5);return surf(lx,lz)}
+// track index of a local cell (used for the bridge's foot and top on whichever side is folded)
+function trackIdxOfLocal(c,r){const[bx,bz]=toBoard(c+.5-7.5,r+.5-7.5),C=Math.round(bx+7.5-.5),Rr=Math.round(bz+7.5-.5);return TRACK.findIndex(([a,b])=>a===C&&b===Rr)}
+
+// ---------- rules ----------
+const canMove=(t,v)=>t.p===-1?v===6:t.p<56&&t.p+v<=56;
+const legal=(seat,v)=>G.tokens.filter(t=>t.seat===seat&&canMove(t,v));
+function victimsAt(seat,p){
+  if(p<0||p>50)return[];const idx=(START[seat]+p)%52;if(SAFE.has(idx))return[];
+  return G.tokens.filter(t=>t.seat!==seat&&t.p>=0&&t.p<=50&&idxOf(t)===idx);
+}
+function bridgeInfo(){
+  if(G.foldState!=='up')return null;
+  const foot=trackIdxOfLocal(5,6),top=trackIdxOfLocal(8,2);
+  return foot<0||top<0?null:{foot,top,d:(top-foot+52)%52};
+}
+// Ceiling Drop: while a side is folded, any soldier on the rolled-up side (its wall or ceiling, local rows 0-5) may skip the
+// roll at the start of his turn and drop to the first flat track square past the fold (local 9,6), 1-13 squares on.
+function dropInfo(t){
+  if(G.foldState!=='up'||t.p<0||t.p>50)return null;
+  const[c,r]=TRACK[idxOf(t)],[lx,lz]=toLocal(c+.5-7.5,r+.5-7.5);
+  if(lz+7.5-.5>5.01)return null;
+  const to=trackIdxOfLocal(9,6),d=(to-idxOf(t)+52)%52;
+  return d>0&&d<=13&&t.p+d<=50?{to,d}:null;
+}
+const dropCands=seat=>G.tokens.filter(t=>t.seat===seat&&dropInfo(t));
+// Snooze: after rolling, you may give up the whole turn (a 6 loses its bonus roll too); your rearmost soldier on the
+// track sleepwalks 2 squares, straight through enemies, capturing nobody, never into the home stretch. He stays asleep
+// (nightcap, Zs) until you next move him. Only offered when you have a real move to give up.
+const SNOOZE_STEPS=2;
+function snoozeTarget(seat){
+  const c=G.tokens.filter(t=>t.seat===seat&&t.p>=0&&t.p+SNOOZE_STEPS<=50).sort((a,b)=>a.p-b.p);
+  return c[0]||null;
+}
+function setAsleep(t,on){t.asleep=on;t.m.material=on?sleepMats[t.seat]:soldierMats[t.seat]}
+function canClimb(t){const b=bridgeInfo();return !!b&&t.p>=0&&t.p<=50&&idxOf(t)===b.foot&&t.p+b.d<=50}
+function botPick(seat,v,moves){
+  let best=moves[0],bs=-1e9;const b=bridgeInfo();
+  for(const t of moves){
+    const np=t.p===-1?0:t.p+v;let s=np*.3+Math.random()*4;
+    if(np===56)s+=60;
+    if(np<=50){if(victimsAt(seat,np).length)s+=100;if(SAFE.has((START[seat]+np)%52))s+=12;
+      if(b&&(START[seat]+np)%52===b.foot&&np+b.d<=50)s+=45}   // aim for the staircase while it is open
+    else s+=25;
+    if(t.p===-1)s+=50;
+    if(s>bs){bs=s;best=t}
+  }
+  return best;
+}
+
+// ---------- speech bubbles (DOM, placed over the 3D soldier each frame) ----------
+const _proj=new THREE.Vector3();
+function say(t,pool,prob=1){if(!t||Math.random()>prob)return;sayText(t,line(pool))}
+function sayText(t,text){
+  G.bubbles=G.bubbles.filter(b=>{if(b.t===t){b.el.remove();return false}return true});
+  if(G.bubbles.length>=2){G.bubbles[0].el.remove();G.bubbles.shift()}
+  const el=document.createElement('div');el.className='bub';
+  const bar=document.createElement('i');bar.style.background=COLS[t.seat];el.append(bar,document.createTextNode(text));
+  $('#bubbles').append(el);G.bubbles.push({t,el,t0:clock,dur:2.8});sfx.pop();
+}
+const zEls=new Map();
+function placeZzz(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  for(const t of G.tokens){
+    let el=zEls.get(t);
+    if(!t.asleep||t.p<0){if(el){el.remove();zEls.delete(t)}continue}
+    if(!el){el=document.createElement('div');el.className='zz';el.innerHTML='<span>Z</span><span>z</span><span>z</span>';$('#zzz').append(el);zEls.set(t,el)}
+    t.m.getWorldPosition(_proj);_proj.y+=1.25;_proj.project(camera);
+    el.style.left=((_proj.x*.5+.5)*w+14)+'px';el.style.top=((-_proj.y*.5+.5)*h)+'px';
+  }
+}
+function placeBubbles(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  G.bubbles=G.bubbles.filter(b=>{
+    if(clock-b.t0>b.dur){b.el.remove();return false}
+    b.t.m.getWorldPosition(_proj);_proj.y+=1.45;_proj.project(camera);
+    const x=(_proj.x*.5+.5)*w,y=(-_proj.y*.5+.5)*h;
+    b.el.style.left=Math.max(100,Math.min(w-100,x))+'px';b.el.style.top=Math.max(70,y)+'px';
+    b.el.style.opacity=clock-b.t0>b.dur-.3?(b.dur-(clock-b.t0))/.3:1;
+    return true;
+  });
+}
+function banner(text){const b=$('#banner');if(!text){b.hidden=true;return}b.textContent=text;b.hidden=false}
+
+// ---------- animations ----------
+async function hop(t,from,to,opt={}){const dur=(opt.dur||.22);t.anim={kind:'hop',from,to,t0:G.gt,dur,h:opt.h||.45};await wait(dur);t.anim=null;sfx.step()}
+async function climbBridge(t){
+  // walk up the paper steps (local frame), then on to the top square
+  const pts=[BR_FROM.clone()];brSteps.forEach((g,k)=>{if(k<BR_N)pts.push(V(g.position.x,g.position.y*2+.02,g.position.z))});
+  const top=onMap(...(()=>{const[c,r]=TRACK[bridgeInfo().top];return[c+.5,r+.5]})());pts.push(top.p.clone());
+  t.anim={kind:'path',pts,t0:G.gt,dur:2.2};await wait(2.2);t.anim=null;
+}
+async function wakeUp(v,at){
+  // 1. the captured soldier yawns and fades at the spot, 2. lies in a little bed back in base, 3. sits up
+  v.anim={kind:'wake',at,t0:G.gt,dur:2.8};
+  await wait(.55);v.p=-1;if(v.asleep)setAsleep(v,false);sfx.yawn();
+  await wait(.5);say(v,'wake');
+  await wait(1.75);v.anim=null;v.lie=0;
+}
+async function ceilingDrop(t){
+  const{to,d}=dropInfo(t),[c,r]=TRACK[idxOf(t)],[tc,tr]=TRACK[to];
+  G.drops=(G.drops||0)+1;G.dropBy[t.seat]++;
+  sayText(t,line('dropGo'));sfx.whistle();await wait(1.1);
+  const a=onMap(c+.5,r+.5),b=onMap(tc+.5,tr+.5),p0=a.p.clone().addScaledVector(a.n,.6);
+  t.anim={kind:'path',pts:[p0,p0.clone().lerp(b.p,.25).setY(p0.y+.25),b.p.clone().setY(b.p.y+1.2),b.p.clone()],t0:G.gt,dur:.75};
+  await wait(.75);t.anim=null;t.p+=d;sfx.thump();sfx.step();
+  const hit=victimsAt(t.seat,t.p).length;
+  if(hit)sayText(t,line('dropSquash'));else say(t,'dropLand',.7);
+  return await captureAt(t,true);
+}
+function botDrop(seat){
+  // drop when it lands on someone, or usually when the drop beats an average roll
+  let best=null,bs=0;
+  for(const t of dropCands(seat)){const{d}=dropInfo(t),s=(victimsAt(seat,t.p+d).length?100:0)+d;if(s>bs){bs=s;best=t}}
+  return best&&(bs>=100||dropInfo(best).d>=5&&Math.random()<.8)?best:null;
+}
+async function sleepwalk(t){
+  setAsleep(t,true);G.snoozes=(G.snoozes||0)+1;sayText(t,line('snooze'));sfx.snore();
+  for(let k=0;k<SNOOZE_STEPS;k++){
+    await hop(t,posAt(t.seat,t.p,t.i),posAt(t.seat,t.p+1,t.i),{dur:.62,h:.1});t.p++;
+    const near=G.tokens.find(o=>o.seat!==t.seat&&o.p>=0&&o.p<=50&&idxOf(o)===idxOf(t));
+    if(near&&Math.random()<.8)sayText(near,line('sleepSeen'));
+  }
+  sfx.snore();await wait(.5);
+}
+// bots snooze now and then on a dull small roll (nothing to capture, leave base with, or bring home)
+function botSnooze(seat,v,moves){
+  if(v>2||!snoozeTarget(seat))return false;
+  const useful=moves.some(t=>t.p===-1||t.p+v===56||(t.p+v<=50&&victimsAt(seat,t.p+v).length));
+  return !useful&&Math.random()<.35;
+}
+async function animFold(to,dur){G.foldAnim={from:fold,to,t0:G.gt,dur};await wait(dur);fold=to;G.foldAnim=null}
+
+// ---------- turn flow ----------
+async function roll(seat){
+  const human=seat===0;G.dice.seat=seat;
+  if(human){G.phase='roll';ui();const ch=await new Promise(r=>G.awaitRoll=r);G.awaitRoll=null;if(ch==='drop')return 'drop'}else await wait(.45);
+  G.phase='rolling';ui();G.dice.rolling=true;sfx.rattle();await wait(.55);
+  const v=G.forced||1+Math.floor(Math.random()*6);G.forced=0;G.dice.v=v;G.dice.rolling=false;G.hist[seat].push(v);ui();return v;
+}
+async function move(t,v){
+  const seat=t.seat;
+  if(t.asleep){setAsleep(t,false);say(t,'wakeWalk',.6)}
+  if(t.p===-1){await hop(t,posOf(t),posAt(seat,0,t.i),{h:1,dur:.38});t.p=0;say(t,'out',.4);return{captured:false,home:false}}
+  for(let k=0;k<v;k++){await hop(t,posAt(seat,t.p,t.i),posAt(seat,t.p+1,t.i));t.p++}
+  let captured=await captureAt(t);
+  if(t.p===56){sfx.cheer();say(t,'home');await wait(.5);return{captured,home:true}}
+  // the Staircase Bridge: land exactly on its foot while the map is folded to climb ~10 squares
+  if(canClimb(t)){
+    let yes=true;
+    if(seat===0){G.phase='climb';$('#ask').hidden=false;ui();yes=await new Promise(r=>G.awaitClimb=r);G.awaitClimb=null;$('#ask').hidden=true}
+    if(yes){
+      say(t,'climb');G.phase='moving';ui();
+      await climbBridge(t);t.p+=bridgeInfo().d;
+      if(await captureAt(t))captured=true;
+    }
+  }
+  return{captured,home:false};
+}
+async function captureAt(t,quiet){
+  const vs=victimsAt(t.seat,t.p);if(!vs.length)return false;
+  sfx.thump();if(!quiet)say(t,'capAtk');
+  vs.forEach(v=>{const p=posOf(v);wakeUp(v,p)});
+  await wait(1.1);return true;
+}
+async function playTurn(seat){
+  const human=seat===0;let sixes=0,again=true,first=true;
+  while(again&&!G.over){
+    again=false;
+    // a soldier on the ceiling may drop instead of the turn's first roll
+    if(first&&!human){const bt=botDrop(seat);if(bt){await wait(.4);G.phase='moving';ui();if(await ceilingDrop(bt))again=true;first=false;continue}}
+    G.dropOk=first&&human;first=false;
+    const v=await roll(seat);G.dropOk=false;
+    if(v==='drop'){
+      const cs=dropCands(seat);let tok=cs[0];
+      if(cs.length>1){G.selectable=cs;G.phase='droppick';ui();tok=await new Promise(r=>G.awaitPick=r);G.awaitPick=null;G.selectable=[]}
+      G.phase='moving';ui();if(await ceilingDrop(tok))again=true;continue;
+    }
+    const allBase=G.tokens.every(t=>t.seat!==seat||t.p===-1||t.p===56);
+    if(v===6){sixes++;G.drought[seat]=0;if(sixes===3){say(pick(G.tokens.filter(t=>t.seat===seat&&t.p<56)),'three');await wait(1.2);break}}
+    else if(allBase)G.drought[seat]++;
+    const moves=legal(seat,v);
+    if(!moves.length){
+      if(allBase&&G.drought[seat]>=3)say(pick(G.tokens.filter(t=>t.seat===seat&&t.p===-1)),'stuck',human?.7:.25);
+      G.phase='nomove';ui();await wait(.7);if(v===6)again=true;continue;
+    }
+    if(v===6&&sixes<3)say(moves[0],'six',.25);
+    let tok;
+    const canSnooze=!!snoozeTarget(seat);
+    if(human&&(canSnooze||!moves.every(t=>t.p===moves[0].p))){G.selectable=moves;G.snoozeOk=canSnooze;G.phase='pick';
+      tok=await new Promise(r=>{G.awaitPick=r;ui()});G.awaitPick=null;G.selectable=[];G.snoozeOk=false}
+    else{if(!human)await wait(.3);tok=human?moves[0]:botSnooze(seat,v,moves)?'snooze':botPick(seat,v,moves)}
+    if(tok==='snooze'){G.phase='moving';ui();await sleepwalk(snoozeTarget(seat));break}
+    G.phase='moving';ui();
+    const r=await move(tok,v);
+    if(G.tokens.filter(t=>t.seat===seat).every(t=>t.p===56)){G.over=true;G.winner=seat;say(tok,'win');sfx.cheer();ui();
+      banner(seat===0?'You win the dream!':`${NAMES[seat]} wins the dream`);return}
+    if(v===6||r.captured||r.home)again=true;
+  }
+}
+// The Fold: every 3 rounds a random side rolls up for one round; it is announced one round ahead
+let foldWarn=false;
+async function roundStart(){
+  if(G.foldState==='up'){
+    bridgeWanted=false;banner('The map unrolls');await wait(1.4);
+    await animFold(0,2.6);G.foldState='flat';banner('');
+    const any=G.tokens.filter(t=>t.p>=0&&t.p<56);if(any.length)say(pick(any),'unfold',.6);
+  }
+  if(G.round%3===2){
+    G.nextSide=Math.floor(Math.random()*4);foldWarn=true;sfx.chime();
+    banner(`Next round the map folds: ${SIDE_NAMES[G.nextSide]} side`);
+    const any=G.tokens.filter(t=>t.p>=0&&t.p<56);if(any.length)say(pick(any),'foldWarn');
+    await wait(1.6);banner('');
+  }
+  if(G.round%3===0){
+    foldWarn=false;applySide(G.nextSide);banner(`The map folds: ${SIDE_NAMES[G.nextSide]} side`);sfx.whoosh();
+    await wait(.9);await animFold(MAXF,3.2);G.foldState='up';bridgeWanted=true;
+    const any=G.tokens.filter(t=>t.p>=0&&t.p<56);if(any.length)say(pick(any),'foldNow');
+    await wait(1.4);banner('The staircase is open this round: land exactly on its foot to climb');await wait(1.8);
+    banner('Soldiers on the rolled-up side can drop down instead of rolling');await wait(1.8);banner('');
+  }
+  ui();
+}
+async function loop(){
+  const id=G;
+  while(!G.over&&G===id){
+    if(G.turn===0)await roundStart();
+    await playTurn(G.turn);if(G.over||G!==id)break;
+    G.turn=(G.turn+1)%4;if(G.turn===0)G.round++;
+    ui();
+  }
+}
+
+// ---------- dice + dock ----------
+const dctx=$('#dice').getContext('2d');
+const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],
+  5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
+function drawDice(){
+  const d=G.dice,c=dctx;let v=d.v,rot=0;
+  if(d.rolling){v=1+Math.floor(Math.random()*6);rot=(Math.random()-.5)*.7}
+  const sc=G.phase==='roll'&&G.awaitRoll?1+Math.sin(clock*6)*.05:1;
+  c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,68,68);c.translate(34,34);c.rotate(rot);c.scale(sc,sc);c.translate(-34,-34);
+  c.fillStyle='#f3ead2';c.beginPath();c.roundRect(7,7,54,54,8);c.fill();
+  c.fillStyle=rgba(COLS[d.seat],.35);c.beginPath();c.roundRect(7,7,54,54,8);c.fill();
+  c.strokeStyle=INK;c.lineWidth=2.5;c.beginPath();c.roundRect(7.5,6.5,54,54,8);c.stroke();
+  c.fillStyle=INK;for(const[px,py]of PIPS[v]){c.beginPath();c.arc(7+px*54,7+py*54,4.6,0,Math.PI*2);c.fill()}
+}
+function ui(){
+  const s=G.over?G.winner:G.turn;$('#chip').style.background=COLS[s];
+  let txt;
+  if(G.over)txt=s===0?'You won!':`${NAMES[s]} won`;
+  else if(s===0)txt={roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Tap a glowing soldier to move',moving:'Marching...',
+    nomove:'No move this time',climb:'You reached the staircase! Climb it?',droppick:'Tap the soldier to drop'}[G.phase]||'Your turn';
+  if(s===0&&G.phase==='pick'&&G.snoozeOk)txt='Tap a soldier to move, or Snooze';
+  else txt=`${NAMES[s]} is playing`;
+  const canDrop=G.dropOk&&!!G.awaitRoll&&dropCands(0).length>0;
+  if(canDrop&&s===0&&G.phase==='roll')txt='Roll, or drop from the ceiling';
+  $('#bDrop').hidden=!canDrop;
+  $('#bSnooze').hidden=!(G.snoozeOk&&G.phase==='pick'&&G.awaitPick);
+  $('#turnText').textContent=txt;
+  $('#hLast').textContent=G.hist[s].slice(-8).join(' ')||'-';
+  const left=(3-G.round%3)%3;
+  $('#foldInfo').textContent=G.foldState==='up'?`Folded: ${SIDE_NAMES[SIDE]} side. Staircase open`:
+    foldWarn?`Next round the map folds: ${SIDE_NAMES[G.nextSide]}`:`Round ${G.round}. The map folds in ${left||3} round${(left||3)===1?'':'s'}`;
+  $('#bSpeed').textContent=`Speed ${SPEED}x`;
+}
+function requestRoll(){sctx();if(G.awaitRoll)G.awaitRoll()}
+$('#dice').onclick=requestRoll;
+$('#bSnooze').onclick=()=>{sctx();if(G.awaitPick&&G.snoozeOk)G.awaitPick('snooze')};
+$('#bDrop').onclick=()=>{sctx();if(G.awaitRoll&&G.dropOk&&dropCands(0).length)G.awaitRoll('drop')};
+// test scene: fold the Green + Yellow side now, put your soldier on the ceiling and a Green soldier on the landing square
+$('#tests').onchange=async e=>{
+  const v=e.target.value;e.target.value='';e.target.blur();sctx();
+  if(!v||G.turn!==0||!G.awaitRoll||G.staging)return;
+  if(v==='snooze'){
+    // your rear soldier just behind a Green soldier, a lead soldier out too, and your next roll is a 1
+    const put=(seat,i,idx)=>{const t=G.tokens.find(t=>t.seat===seat&&t.i===i);t.p=(idx-START[seat]+52)%52};
+    G.tokens.forEach(t=>{if(t.p>=0&&t.p<=50&&[42,43,44,2].includes(idxOf(t)))t.p=-1});
+    G.tokens.filter(t=>t.seat===0).forEach(t=>{t.p=-1;setAsleep(t,false)});
+    put(0,0,42);put(0,1,2);put(1,0,43);G.forced=1;ui();return;
+  }
+  G.staging=true;G.phase='staging';ui();
+  if(G.foldState!=='up'||SIDE!==0){if(G.foldState==='up'){await animFold(0,1)}applySide(0);sfx.whoosh();await animFold(MAXF,2);G.foldState='up';bridgeWanted=true}
+  const put=(seat,i,idx)=>{const t=G.tokens.find(t=>t.seat===seat&&t.i===i);t.p=(idx-START[seat]+52)%52};
+  G.tokens.forEach(t=>{if(t.p>=0&&t.p<=50&&[10,18].includes(idxOf(t)))t.p=-1});
+  put(0,0,10);put(1,0,18);G.staging=false;G.phase='roll';ui();
+};
+$('#bClimb').onclick=()=>{if(G.awaitClimb)G.awaitClimb(true)};
+$('#bStay').onclick=()=>{if(G.awaitClimb)G.awaitClimb(false)};
+$('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;ui()};
+$('#bNew').onclick=()=>{sctx();newGame()};
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){if(e.target.tagName!=='BUTTON'){e.preventDefault();requestRoll()}}});
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+function onTap(e){
+  sctx();
+  if(G.awaitPick&&G.selectable.length){
+    const r=canvas.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height*2-1));
+    ray.setFromCamera(ndc,camera);
+    const hit=ray.intersectObjects(G.selectable.map(t=>t.m),false)[0];
+    let tok=hit&&G.selectable.find(t=>t.m===hit.object);
+    if(!tok){ // forgiving tap: nearest selectable soldier on screen within 60 px
+      let bd=60;for(const t of G.selectable){t.m.getWorldPosition(_proj);_proj.y+=.6;_proj.project(camera);
+        const d=Math.hypot((_proj.x*.5+.5)*r.width-(e.clientX-r.left),(-_proj.y*.5+.5)*r.height-(e.clientY-r.top));if(d<bd){bd=d;tok=t}}}
+    if(tok)G.awaitPick(tok);
+  }else if(G.awaitRoll)requestRoll();
+}
+
+// ---------- drawing the tokens each frame ----------
+function placeMesh(m,p,n,lie){
+  m.position.copy(p);
+  _f.copy(camLocal).sub(m.position);_f.addScaledVector(n,-_f.dot(n));
+  if(_f.lengthSq()<1e-6)_f.set(0,0,1);_f.normalize();_r.crossVectors(n,_f).normalize();
+  _m.makeBasis(_r,n,_f);m.quaternion.setFromRotationMatrix(_m);
+  if(lie)m.rotateX(-lie*Math.PI/2);
+}
+const _q=new THREE.Quaternion();
+// a dashed target ring on the landing square while you can drop
+const dropRing=new THREE.Mesh(new THREE.RingGeometry(.3,.46,32,1),new THREE.MeshBasicMaterial({color:0xb03a2e,transparent:true,opacity:.85,side:THREE.DoubleSide}));
+dropRing.geometry.rotateX(-Math.PI/2);dropRing.visible=false;boardRoot.add(dropRing);
+function placeDropRing(){
+  const cs=G.dropOk&&G.awaitRoll?dropCands(0):[];dropRing.visible=cs.length>0;
+  if(cs.length){const[c,r]=TRACK[dropInfo(cs[0]).to],q=onMap(c+.5,r+.5);dropRing.position.copy(q.p).addScaledVector(q.n,.03);dropRing.scale.setScalar(1+Math.sin(clock*5)*.12)}
+}
+function renderTokens(){
+  const groups=new Map();
+  for(const t of G.tokens){if(t.anim)continue;const key=t.p>=0&&t.p<=50?'t'+idxOf(t):t.p>50&&t.p<56?'h'+t.seat+t.p:null;t.key=key;if(key){if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t)}}
+  beds.forEach(b=>b.visible=false);
+  for(const t of G.tokens){
+    let p,n,lie=0,sc=t.p===56?.55:1,lift=0;
+    const a=t.anim;
+    if(a&&a.kind==='hop'){const k=Math.min(1,(G.gt-a.t0)/a.dur),x=a.from.x+(a.to.x-a.from.x)*k,z=a.from.z+(a.to.z-a.from.z)*k,q=onMap(x,z);
+      p=q.p;n=q.n;lift=Math.sin(Math.PI*k)*a.h}
+    else if(a&&a.kind==='path'){const k=Math.min(1,(G.gt-a.t0)/a.dur)*(a.pts.length-1),i=Math.min(a.pts.length-2,Math.floor(k));
+      p=a.pts[i].clone().lerp(a.pts[i+1],k-i);n=V(0,1,0);lift=Math.abs(Math.sin(k*Math.PI))*.12}
+    else if(a&&a.kind==='wake'){
+      const k=(G.gt-a.t0);
+      if(k<.55){const q=onMap(a.at.x,a.at.z);p=q.p;n=q.n;sc=Math.max(.05,1-k/.55);lift=k*.6}
+      else{const bp=posOf(t),q=onMap(bp.x,bp.z);p=q.p;n=q.n;
+        const bed=beds[t.seat];bed.visible=k<2.6;bed.position.copy(q.p);
+        _hz.crossVectors(_hx,q.n);_hm.makeBasis(_hx,q.n,_hz);bed.quaternion.setFromRotationMatrix(_hm);bed.scale.setScalar(Math.min(1,(k-.55)*4,(2.8-k)*4));
+        lie=k<1.9?1:Math.max(0,1-(k-1.9)/.45);lift=.2*(lie>0?1:0)+.02}}
+    else{const bp=posOf(t);let x=bp.x,z=bp.z;const g=t.key&&groups.get(t.key);
+      if(g&&g.length>1){const k=g.indexOf(t),nn=g.length;x+=(k-(nn-1)/2)*.3;z+=(k-(nn-1)/2)*.08;sc=.82}
+      const q=onMap(x,z);p=q.p;n=q.n}
+    const sel=G.selectable.includes(t);if(sel)lift+=Math.abs(Math.sin(clock*6+t.i))*.18;
+    placeMesh(t.m,p.clone().addScaledVector(n,.02+lift),n,lie);t.m.scale.setScalar(sc);
+    t.ring.visible=sel;if(sel){t.ring.position.copy(p).addScaledVector(n,.03);_hz.crossVectors(_hx,n);_hm.makeBasis(_hx,n,_hz);t.ring.quaternion.setFromRotationMatrix(_hm);
+      t.ring.scale.setScalar(1+Math.sin(clock*6)*.1)}
+  }
+}
+
+function newGame(){
+  if(G){G.bubbles.forEach(b=>b.el.remove())}
+  zEls.forEach(el=>el.remove());zEls.clear();
+  G=newState();bridgeWanted=false;foldWarn=false;fold=0;applySide(0);banner('');$('#ask').hidden=true;
+  makeTokens();ui();loop();
+}
+
+function frame(now){
+  const dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;clock+=dt;
+  G.gt+=dt*SPEED;
+  if(G.waiters.length){const due=G.waiters.filter(w=>w.t<=G.gt);if(due.length){G.waiters=G.waiters.filter(w=>w.t>G.gt);due.forEach(w=>w.res())}}
+  if(G.foldAnim){const f=G.foldAnim,k=Math.min(1,(G.gt-f.t0)/f.dur);fold=f.from+(f.to-f.from)*sine(k)}
+  // the camera sinks as the map folds, so the roll and the sky come into view
+  if(!drag)tilt=Math.max(26,baseTilt+4-26*(fold/MAXF));
+  let dOff=-SIDE*Math.PI/2-camOff;dOff=Math.atan2(Math.sin(dOff),Math.cos(dOff));camOff+=dOff*Math.min(1,dt*2.2);
+  boardRoot.updateMatrixWorld();camLocal.copy(camera.position);boardRoot.worldToLocal(camLocal);
+  brDt=dt*SPEED;updateBand();placeCamera(clock,dt);
+  ceiling.rotation.z=Math.PI+clock*.035;
+  updateBridge();placeHouses();musicFollowDream();renderTokens();placeDropRing();placeBubbles();placeZzz();drawDice();
+  if(EXTRAS){spinner.rotation.y+=dt*14;top.rotation.set(Math.cos(clock*1.7)*.16,0,Math.sin(clock*1.7)*.16)}
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+window.__game={get G(){return G},drop:t=>dropInfo(t),bridge:()=>bridgeInfo(),roll(v){if(G.awaitRoll){G.forced=v;G.awaitRoll()}},foldNow(){G.round=3},setRound(r){G.round=r}};
+resize();applySkin();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(applySkin);
+newGame();
+requestAnimationFrame(frame);
+
+})();
+</script>
