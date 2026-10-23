@@ -32,16 +32,24 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 #turn{display:flex;align-items:center;gap:8px;font-size:19px;min-width:0}
 #chip{width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid var(--line)}
 #dice{width:68px;height:68px;cursor:pointer;flex:none;border-radius:12px}
+#pad{position:absolute;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);
+  border:3px solid var(--line);border-radius:16px;transition:left .35s,top .35s,transform .35s}
+#pad[hidden]{display:none}
+#pad #turn{font-size:clamp(17px,2.4vmin,24px);max-width:240px;text-align:center;justify-content:center}
+#pad #chip{display:none}
+#pad #bSkip{font-size:18px;padding:10px 16px}
 #dice:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 #hist{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
 #hist b{color:var(--ink);font-weight:inherit;letter-spacing:.12em}
 #hint{font-size:13px;color:var(--muted);text-align:center;margin:0}
-#setup{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(233,223,196,.72)}
+#setup{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(233,223,196,.72)}
 .card{background:var(--panel);border:2px solid var(--ink);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;
-  width:min(340px,100%);box-sizing:border-box;box-shadow:4px 5px 0 rgba(33,28,23,.25)}
+  width:min(340px,100%);box-sizing:border-box;zoom:var(--cz,1);box-shadow:4px 5px 0 rgba(33,28,23,.25)}
 .card h2{font-family:var(--font-display);font-size:28px;line-height:1;margin:0;text-wrap:balance}
 #seats{display:flex;flex-direction:column;gap:8px}#seats[hidden]{display:none}
 .seat{display:flex;align-items:center;gap:10px}
+.count{display:flex;align-items:center;gap:6px;font-size:18px}.count span{margin-right:auto}
+.count button{min-width:40px;font-size:18px;padding:8px 0}.count button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
 .seat .dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink);flex:none}
 .seat .nm{flex:1;min-width:0;font-size:19px}
 .seat input.nm{font:inherit;font-size:17px;color:var(--ink);background:#fbf6e6;border:1.5px solid var(--line);border-radius:6px;padding:5px 8px;box-sizing:border-box}
@@ -76,11 +84,12 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
       <option value="squad">Squad up (stack)</option>
       <option value="brawl">Brawl + walk of shame</option>
     </select>
+    <button id="bTable" type="button">Table mode on</button>
     <button id="bSpeed" type="button">Speed 1x</button>
     <button id="bSound" type="button">Sound on</button>
     <button id="bNew" type="button">New game</button>
   </header>
-  <div id="stage"><canvas id="board" aria-label="Ludo board"></canvas>
+  <div id="stage"><canvas id="board" aria-label="Ludo board"></canvas><div id="pad" hidden></div>
     <div id="setup" role="dialog" aria-label="Who's playing?">
       <div class="card">
         <h2>Pick a battlefield</h2>
@@ -385,6 +394,12 @@ const sfx={
 // Ink is the locked look (2026-10-19); the toy drawing code stays dormant behind LOOK
 const LOOK='ink';
 let SPEED=1;
+// TABLE MODE (lab, 2026-10-23): four people round one tablet. Names, bubbles and the dice face their owner's side,
+// soldiers stand on a solid team-colour base, everything runs slower. FACE = rotation for seats bottom/left/top/right.
+let TABLE=true;
+try{if(localStorage.getItem('lw.table')==='0')TABLE=false}catch(e){}
+const FACE=[0,Math.PI/2,Math.PI,-Math.PI/2];
+let DS=68;
 try{SPEED=+localStorage.getItem('lw.speed')||1}catch(e){}
 const DEMO=location.hash==='#demo';
 // who plays each colour; set on the setup screen (#demo = four bots)
@@ -670,7 +685,7 @@ function sayText(t,text){
   if(!t)return;
   S.bubbles=S.bubbles.filter(b=>b.tok!==t);
   if(S.bubbles.length>=2)S.bubbles.shift();
-  S.bubbles.push({tok:t,text,t0:S.rt,dur:2.6});S.said.push(text);
+  S.bubbles.push({tok:t,text,t0:S.rt,dur:TABLE?clamp(1.6+.36*text.split(' ').length,3,7):2.6});S.said.push(text);
   if(VOICE==='off'||!soundOn)sfx.pop();
   else voice(t,text);
 }
@@ -771,7 +786,7 @@ function shake(a){if(!reduceMotion){S.shakeT=S.rt;S.shakeA=a}}
 // ---------- animations ----------
 async function hop(t,from,to,opt={}){
   if(to.x!==from.x)t.face=(to.x<from.x?-1:1)*(opt.back?-1:1);
-  const dur=opt.dur||.2;
+  const dur=(opt.dur||.2)*(TABLE?1.6:1);
   t.anim={kind:'hop',from,to,t0:S.gt,dur,h:opt.h||.42};
   await wait(dur);
   t.anim=null; t.landT=S.gt; if(!opt.quiet)sfx.step();
@@ -1111,10 +1126,10 @@ function roll(seat){
     const human=isHuman(seat);
     S.dice.seat=seat;
     if(human){S.phase='roll';S.idleT=S.rt;S.idleSaid=false;ui();await new Promise(r=>S.awaitRoll=r);S.awaitRoll=null}
-    else await wait(.45);
+    else await wait(TABLE?1:.45);
     S.phase='rolling';ui();
     S.dice.rolling=true; S.dice.t0=S.gt; sfx.rattle();
-    await wait(.55);
+    await wait(TABLE?.9:.55);
     const v=human&&S.forced?S.forced:fairRoll(); if(human)S.forced=0;
     S.dice.v=v; S.dice.rolling=false; sfx.settle();
     S.hist[seat].push(v);
@@ -1210,6 +1225,7 @@ async function loop(){
   while(!S.over){
     await turn(S.turn);
     if(S.over)break;
+    if(TABLE)await wait(.6);
     endTurnGrudges(S.turn);
     // retreat orders arm at the end of the turn they were given and expire after the next one
     if(S.retreat&&S.retreat.seat===S.turn){if(S.retreat.armed)S.retreat=null;else S.retreat.armed=true}
@@ -1229,7 +1245,9 @@ function startGame(){
 let pickHumans=HUMANS.slice(),pickTeams=TEAMS.slice();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function renderSeats(){
-  $('#seats').innerHTML=COLOUR.map((c,s)=>`<div class="seat"><span class="dot" style="background:${SEATS[s].ink}"></span>`+
+  const nH=pickHumans.filter(Boolean).length;
+  $('#seats').innerHTML=`<div class="count" role="group" aria-label="How many people are playing?"><span>Players</span>`+
+    [1,2,3,4].map(n=>`<button type="button" data-n="${n}" aria-pressed="${n===nH}">${n}</button>`).join('')+`</div>`+COLOUR.map((c,s)=>`<div class="seat"><span class="dot" style="background:${SEATS[s].ink}"></span>`+
     (pickHumans[s]
       ?`<input class="nm" id="team${s}" data-s="${s}" maxlength="14" autocomplete="off" placeholder="${c} team name" aria-label="${c} team name" value="${esc(pickTeams[s])}">`
       :`<span class="nm bot">${BOTNAME[s]}</span>`)+
@@ -1249,7 +1267,9 @@ function renderLevel(){
 }
 $('#levels').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(!b)return;LEVEL=b.dataset.lv;try{localStorage.setItem('lw.level',LEVEL)}catch(e){}renderLevel()};
 function showSetup(){pickHumans=HUMANS.slice();pickTeams=TEAMS.slice();renderSeats();renderLevel();$('#setup').hidden=false;ui()}
-$('#seats').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(!b)return;pickHumans[+b.dataset.s]=b.dataset.h==='1';renderSeats()};
+$('#seats').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(!b)return;
+  if(b.dataset.n){const n=+b.dataset.n;pickHumans=[[1,0,0,0],[1,0,1,0],[1,1,1,0],[1,1,1,1]][n-1].map(Boolean)}
+  else pickHumans[+b.dataset.s]=b.dataset.h==='1';renderSeats()};
 $('#seats').oninput=e=>{if(e.target.dataset&&e.target.dataset.s!=null)pickTeams[+e.target.dataset.s]=e.target.value.slice(0,14)};
 $('#bStart').onclick=()=>{
   if(LEVELS[LEVEL].url){location.href=LEVELS[LEVEL].url;return}
@@ -1283,12 +1303,15 @@ function inkBoard(c){
   c.strokeStyle=INK;c.lineCap='round';c.lineJoin='round';
   SEATS.forEach(s=>{
     const[bx,by]=s.base;
-    wash(bx*cs,by*cs,6*cs,6*cs,s.ink,.4);
+    wash(bx*cs,by*cs,6*cs,6*cs,s.ink,TABLE?.75:.4);
     c.fillStyle=rgba('#f3ead2',.93);c.fillRect((bx+1)*cs,(by+1)*cs,4*cs,4*cs);
     box((bx+1)*cs,(by+1)*cs,4*cs,4*cs);box(bx*cs,by*cs,6*cs,6*cs,cs*.07);
     SLOT.forEach(([sx,sy])=>{c.fillStyle=rgba(s.ink,.28);c.beginPath();c.arc((bx+sx)*cs,(by+sy)*cs,cs*.62,0,Math.PI*2);c.fill();circ((bx+sx)*cs,(by+sy)*cs,cs*.62)});
-    c.fillStyle=INK;c.font=`${Math.round(cs*.62)}px "Patrick Hand",cursive`;c.textAlign='center';c.textBaseline='middle';
-    c.fillText(s.name.toUpperCase(),(bx+3)*cs,(by+5.52)*cs,5.6*cs);
+    c.textAlign='center';c.textBaseline='middle';
+    if(TABLE){const si=SEATS.indexOf(s),a=FACE[si];c.save();c.translate((bx+3-2.52*Math.sin(a))*cs,(by+3+2.52*Math.cos(a))*cs);c.rotate(a);
+      c.font=`${Math.round(cs*.8)}px "Patrick Hand",cursive`;c.fillStyle=INK;c.fillText(s.name.toUpperCase(),0,cs*.04,5.6*cs);c.restore()}
+    else{c.fillStyle=INK;c.font=`${Math.round(cs*.62)}px "Patrick Hand",cursive`;
+    c.fillText(s.name.toUpperCase(),(bx+3)*cs,(by+5.52)*cs,5.6*cs)}
   });
   for(const cell of allCells()){
     const x=cell.c*cs,y=cell.r*cs,si=cellSeat(cell);
@@ -1341,9 +1364,11 @@ function toyBoard(c){
 // ---------- drawing: soldiers ----------
 function inkSoldier(c,h,col,o){
   const boil=Math.floor(S.rt*8), J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.04;
-  const lw=Math.max(1.3,h*.075);
+  const lw=Math.max(TABLE?2:1.3,h*(TABLE?.1:.075));
   c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;
-  if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.32,h*.1,0,0,Math.PI*2);c.fill()}
+  if(o.shadow&&TABLE){c.fillStyle=col;c.lineWidth=Math.max(1.5,h*.05);c.beginPath();c.ellipse(0,0,h*.4,h*.17,0,0,Math.PI*2);c.fill();c.stroke()}
+  else if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.32,h*.1,0,0,Math.PI*2);c.fill()}
+  if(TABLE)c.strokeStyle=col;
   const sw=Math.sin(o.legs*Math.PI*2)*h*.1;
   const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
   L(J(1),-h*.38,-h*.12+sw+J(2),0);L(J(1),-h*.38,h*.12-sw+J(3),0);
@@ -1353,9 +1378,10 @@ function inkSoldier(c,h,col,o){
   if(o.sulk){L(nx*.6,-h*.5,-h*.4+J(5),-h*.03,lw*1.25);L(nx,-h*.62,nx*.6,-h*.5);L(nx,-h*.62,h*.04,-h*.4)}
   else{L(-h*.2+J(5),-h*.36,h*.27+J(6),-h*.84,lw*1.25);L(J(4),-h*.63,-h*.1,-h*.44);L(J(4),-h*.63,h*.13,-h*.62)}
   if(o.chute)inkChute(c,h,col,lw);
+  if(!TABLE)c.strokeStyle=INK;
   const hy=-h*(o.sulk?.74:.8)+J(7)*.3, hr=h*.12;
   if(o.sulk){c.save();c.translate(nx+h*.04,hy);c.rotate(.45);c.translate(0,-hy)}
-  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(J(7)*.3,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
+  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(J(7)*.3,hy,hr,0,Math.PI*2);c.fill();if(TABLE&&!o.soot){c.fillStyle=rgba(col,.35);c.fill()}c.lineWidth=lw;c.stroke();
   c.beginPath();c.arc(0,hy-hr*.15,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
   L(-hr*1.45,hy-hr*.12,hr*1.45,hy-hr*.12,lw*.9);
   if(o.soot){c.strokeStyle=rgba(INK,.45);c.lineWidth=lw*.6;for(let k=0;k<2;k++){const sx=(k?.08:-.06)*h,ph=S.rt*2+k*2+o.seed;
@@ -1367,9 +1393,9 @@ function inkSoldier(c,h,col,o){
 // grip the rider's ankles. The rider sways, kicks, waves forward, and his helmet keeps sliding down over his eyes.
 function inkSquad(c,h,col,o){
   const boil=Math.floor(S.rt*8),J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.035;
-  const lw=Math.max(1.3,h*.075),tr=Math.sin(S.rt*42+o.seed)*h*(o.walk?.04:.02);
+  const lw=Math.max(TABLE?2:1.3,h*(TABLE?.1:.075)),tr=Math.sin(S.rt*42+o.seed)*h*(o.walk?.04:.02);
   const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
-  c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;
+  c.lineCap='round';c.lineJoin='round';c.strokeStyle=TABLE?col:INK;
   if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.36,h*.11,0,0,Math.PI*2);c.fill()}
   // carrier legs: bowed out at the knee, trembling
   const sw=Math.sin(o.legs*Math.PI*2)*h*.07,hip=-h*.34,neck=-h*.6;
@@ -1403,7 +1429,7 @@ function inkSquad(c,h,col,o){
   // squeezed-shut eyes and gritted teeth
   c.strokeStyle=o.soot?PAPER:INK;c.lineWidth=Math.max(1,hr2*.22);
   [-1,1].forEach(s2=>{const ex=s2*hr2*.35+hr2*.22,ey=hy+hr2*.15;c.beginPath();c.moveTo(ex-hr2*.18,ey-hr2*.1*s2);c.lineTo(ex+hr2*.18,ey+hr2*.1*s2);c.stroke()});
-  c.beginPath();c.moveTo(hr2*.05,hy+hr2*.6);c.lineTo(hr2*.55,hy+hr2*.55);c.stroke();c.strokeStyle=INK;
+  c.beginPath();c.moveTo(hr2*.05,hy+hr2*.6);c.lineTo(hr2*.55,hy+hr2*.55);c.stroke();c.strokeStyle=TABLE?col:INK;
   // sweat drops fly off both sides
   for(let k=0;k<2;k++){
     const ph=(S.rt*(o.walk?1.8:1.1)+k*.5+o.seed*.13)%1,s2=k?1:-1;
@@ -1482,7 +1508,7 @@ function layout(){
 const together=t=>t.mate&&(!t.anim||t.anim.kind==='hop')&&(!t.mate.anim||t.mate.anim.kind==='hop');
 function drawToken(t){
   if(t.hidden||(t.top&&together(t)))return;
-  const x=ox+t.dx*cs,y=oy+(t.dy+.3)*cs,h=cs*.86*t.sc;
+  const x=ox+t.dx*cs,y=oy+(t.dy+.3)*cs,h=cs*(TABLE?1:.86)*t.sc;
   const col=seatCol(t.seat);
   let sx=1,sy=1,lift=0;
   const lk=(S.gt-t.landT)/.18;
@@ -1566,6 +1592,7 @@ function drawBubbles(){
   S.bubbles=S.bubbles.filter(b=>S.rt-b.t0<b.dur);
   const fs=Math.max(13,Math.round(cs*.46));
   ctx.font=LOOK==='ink'?`${fs}px "Patrick Hand",cursive`:`500 ${fs}px Fredoka,sans-serif`;
+  if(TABLE)return drawTableBubbles();
   for(const b of S.bubbles){
     const t=b.tok,age=S.rt-b.t0,a=age<.12?age/.12:age>b.dur-.3?(b.dur-age)/.3:1;
     const tx=ox+t.dx*cs,ty=oy+(t.dy+.3)*cs-cs*.86*t.sc-(t.chute?cs*1.1:0);
@@ -1586,9 +1613,46 @@ function drawBubbles(){
     ctx.globalAlpha=1;
   }
 }
+// table mode: each bubble is drawn in its owner's frame (rotated to their side), above the soldier from their point of
+// view; if that spills off the screen it tries below and slides sideways
+function drawTableBubbles(){
+  const fs=Math.max(16,Math.round(cs*.56)),ink=LOOK==='ink';
+  ctx.font=`${fs}px "Patrick Hand",cursive`;
+  for(const b of S.bubbles){
+    const t=b.tok,age=S.rt-b.t0,a=age<.15?age/.15:age>b.dur-.4?(b.dur-age)/.4:1,ang=FACE[t.seat];
+    const tx=ox+t.dx*cs,ty=oy+(t.dy+.3)*cs-cs*.5*t.sc,rise=cs*.62*t.sc+(t.chute?cs*1.1:0);
+    const maxW=Math.min(Math.min(W,H)*.6,Math.max(170,cs*6)),lines=wrap(b.text,maxW-22);
+    const w=Math.max(...lines.map(l=>ctx.measureText(l).width))+22,hh=lines.length*fs*1.15+14;
+    const co=Math.cos(ang),si=Math.sin(ang),fits=(lx,ly)=>[[lx,ly],[lx+w,ly],[lx,ly+hh],[lx+w,ly+hh]].every(([u,v])=>{
+      const X=tx+u*co-v*si,Y=ty+u*si+v*co;return X>2&&X<W-2&&Y>2&&Y<H-2});
+    let best=null;
+    for(const below of[false,true])for(const sh of[0,-.3,.3,-.45,.45]){
+      const lx=-w/2+sh*w,ly=below?rise*.2+12:-rise-hh-12;
+      if(fits(lx,ly)){best={lx,ly,below};break}
+    }
+    if(!best)best={lx:-w/2,ly:-rise-hh-12,below:false};
+    const{lx,ly,below}=best;
+    ctx.save();ctx.translate(tx,ty);ctx.rotate(ang);ctx.globalAlpha=clamp(a,0,1);
+    ctx.fillStyle=PAPER;ctx.strokeStyle=INK;ctx.lineWidth=Math.max(2,cs*.06);
+    rr(ctx,lx,ly,w,hh,8);ctx.fill();ctx.stroke();
+    const ax=clamp(0,lx+14,lx+w-14);ctx.beginPath();
+    if(below){ctx.moveTo(ax-8,ly+1);ctx.lineTo(ax,ly-10);ctx.lineTo(ax+8,ly+1)}else{ctx.moveTo(ax-8,ly+hh-1);ctx.lineTo(ax,ly+hh+10);ctx.lineTo(ax+8,ly+hh-1)}
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle=INK;ctx.textAlign='left';ctx.textBaseline='top';
+    lines.forEach((l,k)=>ctx.fillText(l,lx+12,ly+7+k*fs*1.15));
+    ctx.fillStyle=seatCol(t.seat);ctx.fillRect(lx+4,ly+6,4,hh-12);
+    ctx.restore();
+  }
+}
 function drawTurnGlow(){
   if(S.over)return;
   const[bx,by]=SEATS[S.turn].base,p=.5+.5*Math.sin(S.rt*4);
+  if(TABLE){
+    ctx.fillStyle=rgba(PAPER,.5);
+    SEATS.forEach((s,k)=>{if(k!==S.turn)ctx.fillRect(ox+s.base[0]*cs,oy+s.base[1]*cs,6*cs,6*cs)});
+    ctx.strokeStyle=rgba(seatCol(S.turn),.55+.45*p);ctx.lineWidth=cs*(.14+.08*p);
+    rr(ctx,ox+(bx+.07)*cs,oy+(by+.07)*cs,5.86*cs,5.86*cs,cs*.3);ctx.stroke();return;
+  }
   ctx.strokeStyle=LOOK==='ink'?rgba(INK,.35+.4*p):rgba('#ffffff',.4+.5*p);
   ctx.lineWidth=Math.max(2,cs*(LOOK==='ink'?.08:.1));
   ctx.setLineDash(LOOK==='ink'?[cs*.3,cs*.2]:[]);
@@ -1724,7 +1788,7 @@ function render(){
 const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],
   5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
 function drawDice(){
-  const s=68,c=dctx,ink=LOOK==='ink',d=S.dice,col=seatCol(d.seat);
+  const s=DS,c=dctx,ink=LOOK==='ink',d=S.dice,col=seatCol(d.seat);
   c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,s,s);
   let v=d.v,rot=0,sc=1;
   if(d.rolling){v=1+Math.floor(hash(Math.floor(S.gt*14))*6);rot=(hash(Math.floor(S.gt*14)+.5)-.5)*.7}
@@ -1768,6 +1832,7 @@ function ui(){
   $('#bSkip').hidden=!S.awaitPick||(S.phase!=='bomb'&&S.phase!=='boot');
   $('#bSkip').textContent=S.phase==='boot'?'Stack up':'Move instead';
   $('#bSpeed').textContent=`Speed ${SPEED}x`;
+  if(TABLE&&W)placePad(true);
   if(VOICE==='speech'&&!speechReady())$('#turnText').textContent+=' (speech not available here, using gibberish)';
   $('#bSound').textContent=soundOn?'Sound on':'Sound off';
   document.documentElement.dataset.look=LOOK;
@@ -1779,6 +1844,8 @@ $('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e
 $('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'))S.awaitPick(null)};
 $('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;try{localStorage.setItem('lw.speed',SPEED)}catch(e){}ui()};
 $('#bSound').onclick=()=>{soundOn=!soundOn;ui()};
+$('#bTable').onclick=()=>{TABLE=!TABLE;try{localStorage.setItem('lw.table',TABLE?'1':'0')}catch(e){}$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';$('#hint').hidden=TABLE;resize()};
+$('#hint').hidden=TABLE;$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';
 $('#bNew').onclick=()=>{ac();newGame()};
 dcv.onclick=requestRoll;
 cv.addEventListener('pointerdown',e=>{
@@ -1799,12 +1866,37 @@ addEventListener('keydown',e=>{
   else if(e.key==='m'||e.key==='M')mysteryDrill();
 });
 
+// table mode: the TURN PAD (dice, whose-turn text, the bomb/stack button) sits outside the board by the active player's
+// camp (above/below in portrait, beside it in landscape) and turns to face them; otherwise its parts live in the dock
+let padSeat=-1;
+function placePad(force){
+  const want=TABLE?S.dice.seat:-1;
+  if(!force&&want===padSeat)return;padSeat=want;
+  const pad=$('#pad');
+  if(!TABLE){
+    pad.hidden=true;const dk=$('#dock');dk.insertBefore($('#turn'),dk.firstChild);dk.insertBefore(dcv,$('#hist'));dk.insertBefore($('#bSkip'),$('#hist'));
+    DS=68;dcv.style.cssText='';
+  }else{
+    pad.hidden=false;if(dcv.parentNode!==pad){pad.append(dcv,$('#turn'),$('#bSkip'))}
+    const s=S.dice.seat,[bx,by]=SEATS[s].base,vert=H-Bd>=W-Bd,gap=vert?(H-Bd)/2:(W-Bd)/2;
+    DS=Math.round(clamp(Math.min(cs*2.2,gap-150),56,130));
+    Object.assign(dcv.style,{width:DS+'px',height:DS+'px'});
+    pad.style.borderColor=seatCol(s);
+    const w=pad.offsetWidth,h=pad.offsetHeight,rw=s%2?h:w,rh=s%2?w:h;
+    let cx=ox+(bx+3)*cs,cy=oy+(by+3)*cs;
+    if(vert)cy=by?oy+Bd+gap/2:oy-gap/2;else cx=bx?ox+Bd+gap/2:ox-gap/2;
+    cx=clamp(cx,rw/2+4,W-rw/2-4);cy=clamp(cy,rh/2+4,H-rh/2-4);
+    Object.assign(pad.style,{left:(cx-w/2)+'px',top:(cy-h/2)+'px',transform:`rotate(${FACE[s]}rad)`});
+  }
+  dcv.width=Math.round(DS*dpr);dcv.height=dcv.width;
+}
 function resize(){
   const r=$('#stage').getBoundingClientRect();
   dpr=Math.min(2,window.devicePixelRatio||1);
   W=r.width;H=r.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
   Bd=Math.floor(Math.min(W,H));cs=Bd/15;ox=(W-Bd)/2;oy=(H-Bd)/2;
-  dcv.width=Math.round(68*dpr);dcv.height=dcv.width;
+  placePad(true);
+  document.documentElement.style.setProperty('--cz',TABLE?clamp(Bd/430,1,1.9).toFixed(2):1);
   buildBoard();
 }
 addEventListener('resize',resize);
@@ -1820,7 +1912,8 @@ function frame(now){
   stepShame();
   // a human sitting on their turn gets one nudge from the bots
   if((S.awaitRoll||S.awaitPick)&&S.started&&!S.idleSaid&&S.rt-S.idleT>8){S.idleSaid=true;taunt('idle')}
-  render();drawDice();
+  placePad();render();drawDice();
+  if(TABLE)$('#pad').style.boxShadow=`0 0 0 ${3+4*(.5+.5*Math.sin(S.rt*5))}px ${rgba(seatCol(S.dice.seat),.55)}`;
   requestAnimationFrame(frame);
 }
 
