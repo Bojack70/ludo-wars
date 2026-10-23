@@ -86,6 +86,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     </select>
     <button id="bTable" type="button">Table mode on</button>
     <button id="bSpeed" type="button">Speed 1x</button>
+    <button id="bMusic" type="button">Music on</button>
     <button id="bSound" type="button">Sound on</button>
     <button id="bNew" type="button">New game</button>
   </header>
@@ -389,6 +390,67 @@ const sfx={
   ding(){tone(1320,.7,'sine',.11,1);tone(2640,.45,'sine',.035,1)},
   splat(){noise(.12,.28,480,0,.9);tone(110,.08,'sine',.14,.6)},
 };
+
+// ---------- background music: three original tunes generated live (no audio files), a random one each game ----------
+// Tunes are written as 16th-note steps: a note name plays, "-" holds it, "." is a rest. Drums: k kick, s snare, h hat, w woodblock.
+const TUNES=[
+  {name:'Toy March',bpm:116,lead:'square',
+   mel:'G4 - - - C5 - - - E5 - D5 - C5 - - - D5 - - - G4 - - - D5 - E5 - D5 - - - E5 - - - C5 - - - G5 - F5 - E5 - - - D5 - B4 - C5 - - - . . . . . . . .',
+   bass:'C3 . . . G3 . . . C3 . . . G3 . . . G2 . . . D3 . . . G2 . . . D3 . . . C3 . . . G3 . . . C3 . . . E3 . . . G2 . . . B2 . . . C3 . . . G2 . . .',
+   drum:'k . . . s . . . k . . . s . . . k . . . s . . . k . . . s . s . k . . . s . . . k . . . s . . . k . . . s . . . k . . . s s s s'},
+  {name:'Sneaky Patrol',bpm:96,lead:'triangle',
+   mel:'A4 . . . . . C5 . B4 . . . . . . . A4 . . . . . E5 . D5 . C5 . . . . . G4 . . . . . B4 . D5 . . . B4 . . . E5 . . . D5 . . . B4 . G#4 . . . . .',
+   bass:'A2 . C3 . E3 . C3 . A2 . C3 . E3 . F3 . A2 . C3 . E3 . C3 . A2 . E3 . A3 . E3 . G2 . B2 . D3 . B2 . G2 . B2 . D3 . G3 . E2 . G#2 . B2 . E3 . E2 . G#2 . B2 . D3 .',
+   drum:'k . h . w . h . k . h . w . h w k . h . w . h . k . h . w . h . k . h . w . h . k . h . w . h w k . h . w . h . k . h w w . h .'},
+  {name:'Bugle Swing',bpm:132,lead:'sawtooth',
+   mel:'G4 . G4 B4 D5 - - . B4 . G4 . . . . . D5 . D5 G5 D5 - B4 . G4 - - - . . . . G4 . B4 . D5 . G5 - D5 . B4 . D5 - - . B4 . G4 . D5 . B4 . G4 - - - - - . .',
+   bass:'G2 . . . D3 . . . G2 . . . D3 . . . G2 . . . D3 . . . G2 . . . B2 . . . C3 . . . G3 . . . C3 . . . G3 . . . D3 . . . A2 . . . G2 . . . D3 . . .',
+   drum:'k . . s . . k . s . . . k . . s k . . s . . k . s . . . k . s s k . . s . . k . s . . . k . . s k . . s . . k . s . s . s s s s'},
+];
+const NOTE={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+const midiHz=n=>{const m=/^([A-G])(#?)(\d)$/.exec(n);return 440*Math.pow(2,((+m[3]+1)*12+NOTE[m[1]]+(m[2]?1:0)-69)/12)};
+const MUSIC={on:true,gain:null,timer:0,tune:null,step:0,next:0};
+try{if(localStorage.getItem('lw.music')==='0')MUSIC.on=false}catch(e){}
+function mNote(type,f,at,dur,vol){
+  const a=AC,o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,at);
+  g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(vol,at+.015);g.gain.exponentialRampToValueAtTime(.0001,at+dur);
+  o.connect(g).connect(MUSIC.gain);o.start(at);o.stop(at+dur+.03);
+}
+function mHit(kind,at){
+  const a=AC;
+  if(kind==='k'){const o=a.createOscillator(),g=a.createGain();o.frequency.setValueAtTime(130,at);o.frequency.exponentialRampToValueAtTime(48,at+.12);
+    g.gain.setValueAtTime(.35,at);g.gain.exponentialRampToValueAtTime(.0001,at+.16);o.connect(g).connect(MUSIC.gain);o.start(at);o.stop(at+.18);return}
+  if(kind==='w'){mNote('sine',880,at,.05,.09);return}
+  const src=a.createBufferSource();src.buffer=NOISE;const f=a.createBiquadFilter(),g=a.createGain();
+  f.type=kind==='h'?'highpass':'bandpass';f.frequency.value=kind==='h'?7000:1900;
+  g.gain.setValueAtTime(kind==='h'?.05:.13,at);g.gain.exponentialRampToValueAtTime(.0001,at+(kind==='h'?.03:.09));
+  src.connect(f).connect(g).connect(MUSIC.gain);src.start(at,Math.random()*.5);src.stop(at+.12);
+}
+function mSchedule(){
+  const a=AC,T=MUSIC.tune,st=60/T.bpm/4;
+  while(MUSIC.next<a.currentTime+.25){
+    const k=MUSIC.step%T.m.length,at=MUSIC.next;
+    const hold=(arr)=>{let n=1;while(arr[(k+n)%arr.length]==='-'&&n<16)n++;return n};
+    if(T.m[k]!=='.'&&T.m[k]!=='-')mNote(T.lead,midiHz(T.m[k]),at,Math.max(.12,hold(T.m)*st*.9),T.lead==='sawtooth'?.035:.05);
+    if(T.b[k]!=='.'&&T.b[k]!=='-')mNote('triangle',midiHz(T.b[k]),at,st*1.6,.16);
+    if(T.d[k]!=='.')mHit(T.d[k],at);
+    MUSIC.step++;MUSIC.next+=st;
+  }
+}
+// a new random tune each game (never the same one twice in a row); off while the sound is off or the tab is hidden
+function musicPlay(fresh){
+  if(!ac()||!MUSIC.on||!soundOn||document.hidden)return;
+  if(!MUSIC.gain){MUSIC.gain=AC.createGain();MUSIC.gain.gain.value=0;MUSIC.gain.connect(AC.destination)}
+  if(fresh||!MUSIC.tune){const pool=TUNES.filter(t=>t!==MUSIC.tune);const t=pick(pool);
+    MUSIC.tune=Object.assign(t,{m:t.mel.split(' '),b:t.bass.split(' '),d:t.drum.split(' ')});MUSIC.step=0}
+  clearInterval(MUSIC.timer);MUSIC.next=AC.currentTime+.1;MUSIC.timer=setInterval(mSchedule,50);
+  MUSIC.gain.gain.cancelScheduledValues(AC.currentTime);MUSIC.gain.gain.setTargetAtTime(.55,AC.currentTime,.5);
+}
+function musicStop(){
+  clearInterval(MUSIC.timer);MUSIC.timer=0;
+  if(MUSIC.gain)MUSIC.gain.gain.setTargetAtTime(0,AC.currentTime,.25);
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)musicStop();else if(S&&S.started&&!S.over)musicPlay()});
 
 // ---------- state ----------
 // Ink is the locked look (2026-10-19); the toy drawing code stays dormant behind LOOK
@@ -1211,7 +1273,7 @@ async function turn(seat){
     await director('move',{});
     if(missedBot&&missedBot.p>=0&&Math.random()<.8)taunt('missed',missedBot);
     if(S.tokens.filter(t=>t.seat===seat).every(t=>t.p===56)){
-      S.over=true;S.winner=seat;sfx.fanfare();
+      S.over=true;S.winner=seat;musicStop();sfx.fanfare();
       const mixed=S.humans.some(Boolean)&&!S.humans.every(Boolean);
       if(mixed&&!human)sayText(tok,line('botWin',tok));else say(tok,'win');
       ui();
@@ -1235,12 +1297,12 @@ async function loop(){
 }
 // a fresh state drops the old waiters, which leaves any previous loop suspended forever (that is the cancel)
 function newGame(){
-  S=newState();applyNames();buildBoard();ui();showSetup();
+  musicStop();S=newState();applyNames();buildBoard();ui();showSetup();
 }
 function startGame(){
   GAMES++;try{localStorage.setItem('lw.games',GAMES)}catch(e){}
   S=newState();S.started=true;applyNames();buildBoard();
-  $('#setup').hidden=true;ui();loop();
+  $('#setup').hidden=true;ui();loop();musicPlay(true);
 }
 let pickHumans=HUMANS.slice(),pickTeams=TEAMS.slice();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1835,6 +1897,7 @@ function ui(){
   if(TABLE&&W)placePad(true);
   if(VOICE==='speech'&&!speechReady())$('#turnText').textContent+=' (speech not available here, using gibberish)';
   $('#bSound').textContent=soundOn?'Sound on':'Sound off';
+  $('#bMusic').textContent=MUSIC.on?'Music on':'Music off';
   document.documentElement.dataset.look=LOOK;
 }
 function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll()}
@@ -1843,7 +1906,8 @@ const DRILLS={bomb:()=>bombDrill(),revenge:revengeDrill,mystery:mysteryDrill,mel
 $('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e.target.blur();if(f)f()};
 $('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'))S.awaitPick(null)};
 $('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;try{localStorage.setItem('lw.speed',SPEED)}catch(e){}ui()};
-$('#bSound').onclick=()=>{soundOn=!soundOn;ui()};
+$('#bSound').onclick=()=>{soundOn=!soundOn;if(soundOn&&S.started&&!S.over)musicPlay();else if(!soundOn)musicStop();ui()};
+$('#bMusic').onclick=()=>{MUSIC.on=!MUSIC.on;try{localStorage.setItem('lw.music',MUSIC.on?'1':'0')}catch(e){}if(MUSIC.on&&S.started&&!S.over)musicPlay(true);else musicStop();ui()};
 $('#bTable').onclick=()=>{TABLE=!TABLE;try{localStorage.setItem('lw.table',TABLE?'1':'0')}catch(e){}$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';$('#hint').hidden=TABLE;resize()};
 $('#hint').hidden=TABLE;$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';
 $('#bNew').onclick=()=>{ac();newGame()};
@@ -1917,7 +1981,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
-window.__lw={get S(){return S},frame,newGame,TRACK,SEATS};
+window.__lw={get S(){return S},get MUSIC(){return MUSIC},frame,newGame,TRACK,SEATS};
 S=newState();applyNames();
 resize();ui();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{buildBoard()});
