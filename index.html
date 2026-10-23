@@ -1364,9 +1364,9 @@ function toyBoard(c){
 // ---------- drawing: soldiers ----------
 function inkSoldier(c,h,col,o){
   const boil=Math.floor(S.rt*8), J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.04;
-  const lw=Math.max(TABLE?2:1.3,h*(TABLE?.1:.075));
+  const lw=Math.max(1.3,h*.075);
   c.lineCap='round';c.lineJoin='round';c.strokeStyle=INK;
-  if(o.shadow&&TABLE){c.fillStyle=col;c.lineWidth=Math.max(1.5,h*.05);c.beginPath();c.ellipse(0,0,h*.4,h*.17,0,0,Math.PI*2);c.fill();c.stroke()}
+  if(o.shadow&&TABLE){c.fillStyle=rgba(col,.45);c.strokeStyle=col;c.lineWidth=Math.max(1,h*.03);c.beginPath();c.ellipse(0,0,h*.36,h*.13,0,0,Math.PI*2);c.fill();c.stroke()}
   else if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.32,h*.1,0,0,Math.PI*2);c.fill()}
   if(TABLE)c.strokeStyle=col;
   const sw=Math.sin(o.legs*Math.PI*2)*h*.1;
@@ -1381,7 +1381,7 @@ function inkSoldier(c,h,col,o){
   if(!TABLE)c.strokeStyle=INK;
   const hy=-h*(o.sulk?.74:.8)+J(7)*.3, hr=h*.12;
   if(o.sulk){c.save();c.translate(nx+h*.04,hy);c.rotate(.45);c.translate(0,-hy)}
-  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(J(7)*.3,hy,hr,0,Math.PI*2);c.fill();if(TABLE&&!o.soot){c.fillStyle=rgba(col,.35);c.fill()}c.lineWidth=lw;c.stroke();
+  c.fillStyle=o.soot?'#4d463e':PAPER;c.beginPath();c.arc(J(7)*.3,hy,hr,0,Math.PI*2);c.fill();c.lineWidth=lw;c.stroke();
   c.beginPath();c.arc(0,hy-hr*.15,hr*1.25,Math.PI*1.03,Math.PI*1.97);c.closePath();c.fillStyle=col;c.fill();c.lineWidth=lw*.9;c.stroke();
   L(-hr*1.45,hy-hr*.12,hr*1.45,hy-hr*.12,lw*.9);
   if(o.soot){c.strokeStyle=rgba(INK,.45);c.lineWidth=lw*.6;for(let k=0;k<2;k++){const sx=(k?.08:-.06)*h,ph=S.rt*2+k*2+o.seed;
@@ -1393,7 +1393,7 @@ function inkSoldier(c,h,col,o){
 // grip the rider's ankles. The rider sways, kicks, waves forward, and his helmet keeps sliding down over his eyes.
 function inkSquad(c,h,col,o){
   const boil=Math.floor(S.rt*8),J=k=>(hash(o.seed*3.1+k*1.7+boil)-.5)*h*.035;
-  const lw=Math.max(TABLE?2:1.3,h*(TABLE?.1:.075)),tr=Math.sin(S.rt*42+o.seed)*h*(o.walk?.04:.02);
+  const lw=Math.max(1.3,h*.075),tr=Math.sin(S.rt*42+o.seed)*h*(o.walk?.04:.02);
   const L=(x1,y1,x2,y2,w)=>{c.lineWidth=w||lw;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
   c.lineCap='round';c.lineJoin='round';c.strokeStyle=TABLE?col:INK;
   if(o.shadow){c.fillStyle=rgba(col,.4);c.beginPath();c.ellipse(0,0,h*.36,h*.11,0,0,Math.PI*2);c.fill()}
