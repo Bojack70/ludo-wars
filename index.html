@@ -37,7 +37,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 #pad[hidden]{display:none}
 #pad #turn{font-size:clamp(17px,2.4vmin,24px);max-width:240px;text-align:center;justify-content:center}
 #pad #chip{display:none}
-#pad #bSkip{font-size:18px;padding:10px 16px}
+#pad #bSkip,#pad #bApart{font-size:18px;padding:10px 16px}
 #dice:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 #hist{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
 #hist b{color:var(--ink);font-weight:inherit;letter-spacing:.12em}
@@ -110,9 +110,10 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     <div id="turn"><span id="chip"></span><span id="turnText">Your turn</span></div>
     <canvas id="dice" tabindex="0" role="button" aria-label="Roll the dice"></canvas>
     <button id="bSkip" type="button" hidden>No bomb</button>
+    <button id="bApart" type="button" hidden>Stay apart</button>
     <div id="hist"><span>Last rolls <b id="hLast">-</b></span><span id="hSix">Sixes 0 of 0</span></div>
   </div>
-  <p id="hint">Tap the dice (or Space) to roll. Tap a glowing soldier to move. Two 6s in a row: plant a bomb instead of moving. Two of your soldiers on one square stack up and move at half speed. Test keys: 1–6 set your next roll. "Test a scene" stages a moment on your turn.</p>
+  <p id="hint">Tap the dice (or Space) to roll. Tap a glowing soldier to move. Two 6s in a row: plant a bomb instead of moving. Land on your own soldier (not on a star) and you can stack up: a stack moves half an even roll (6 = 3, 4 = 2, 2 = 1) and cannot move on an odd roll. Test keys: 1–6 set your next roll. "Test a scene" stages a moment on your turn.</p>
 </div>
 
 <script>
@@ -495,7 +496,7 @@ function newState(){
     name:names[s*4+i],miss:0,tantrumT:-9});
   return{tokens,on,turn:first,gt:0,rt:S?S.rt:0,waiters:[],awaitRoll:null,awaitPick:null,selectable:[],forced:0,
     dice:{v:6,rolling:false,seat:first,t0:0},hist:[[],[],[],[]],drought:[0,0,0,0],
-    bubbles:[],pops:[],parts:[],shakeT:-9,shakeA:0,over:false,winner:-1,phase:'roll',captures:0,
+    bubbles:[],sayQ:[],pops:[],parts:[],shakeT:-9,shakeA:0,over:false,winner:-1,phase:'roll',captures:0,
     bombs:[],booms:0,bombHits:0,flashT:-9,grudges:[],marks:0,paybacks:0,
     retreat:null,crate:null,mystForce:null,mystNext:'good',mysteries:0,mystGood:0,retreats:0,
     rivals:new Map(),rivalTop:null,epitaphs:[],ceasefires:0,meltdowns:0,forceCease:false,ceased:new Set(),ceaseUsed:[],
@@ -519,10 +520,13 @@ function posAt(seat,p,i){
 const posOf=t=>posAt(t.seat,t.p,t.i);
 
 // ---------- rules ----------
-// squad-up: two of your soldiers on one square stack (t.mate) and move together at half the roll, rounded up, until home.
+// squad-up: two of your soldiers on one plain square may stack (t.mate) and move together until home (see stepOf).
 // Any enemy landing on them captures both. The top soldier rides along; the bottom one is the one you tap.
-const stepOf=(t,roll)=>t.mate?Math.ceil(roll/2):roll;
-const canMove=(t,roll)=>t.p===-1?roll===6:t.p<56&&t.p+stepOf(t,roll)<=56;
+// stars (start squares and safe squares) never stack: two soldiers on a star just stand side by side (user rule 2026-10-23)
+const onStar=(seat,p)=>p>=0&&p<=50&&SAFE.has((SEATS[seat].start+p)%52);
+// a stack moves half an even roll (6 = 3, 4 = 2, 2 = 1) and cannot move on an odd roll (user rule 2026-10-23)
+const stepOf=(t,roll)=>t.mate?(roll%2?0:roll/2):roll;
+const canMove=(t,roll)=>t.p===-1?roll===6:t.p<56&&stepOf(t,roll)>0&&t.p+stepOf(t,roll)<=56;
 const legal=(seat,roll)=>S.tokens.filter(t=>t.seat===seat&&!(t.mate&&t.top)&&canMove(t,roll));
 // a stack dissolves once its soldiers are no longer on the same square (captured, bombed, drilled, or home)
 function sweepStacks(){for(const t of S.tokens)if(t.mate&&(t.mate.mate!==t||t.p!==t.mate.p||t.p<0||t.p>=56)){t.mate=null;t.top=false}}
@@ -676,7 +680,7 @@ function squadDrill(){
   // your back soldier lands on your front one with a 3: press "Stack up", then roll a 6 to watch the stack walk 3
   if(!canDrill())return;
   const mine=S.tokens.filter(t=>t.seat===0);
-  mine.forEach(t=>{t.p=t.i===0?10:t.i===1?13:-1;t.soot=false;t.mate=null;t.top=false});
+  mine.forEach(t=>{t.p=t.i===0?11:t.i===1?14:-1;t.soot=false;t.mate=null;t.top=false});
   clearRing([49,50,51,0,1,2,3,4,5],null);S.retreat=null;
   S.only=mine[0];S.forced=3;sayText(mine[1],"Need a lift?");ui();
 }
@@ -753,11 +757,21 @@ function say(t,pool,prob=1,vars){
 }
 function sayText(t,text){
   if(!t)return;
-  S.bubbles=S.bubbles.filter(b=>b.tok!==t);
-  if(S.bubbles.length>=2)S.bubbles.shift();
-  S.bubbles.push({tok:t,text,t0:S.rt,dur:TABLE?clamp(1.6+.36*text.split(' ').length,3,7):2.6});S.said.push(text);
+  S.bubbles=S.bubbles.filter(b=>b.tok!==t);S.sayQ=S.sayQ.filter(b=>b.tok!==t);
+  const b={tok:t,text,dur:TABLE?clamp(3+.5*text.split(' ').length,5,10):4.5};S.said.push(text);
+  // two bubbles at most; a third line waits its turn instead of knocking an unread one off the screen
+  if(S.bubbles.length>=2){b.qt=S.rt;S.sayQ.push(b);return}
+  showBubble(b);
+}
+function showBubble(b){
+  b.t0=S.rt;S.bubbles.push(b);
   if(VOICE==='off'||!soundOn)sfx.pop();
-  else voice(t,text);
+  else voice(b.tok,b.text);
+}
+// table mode: the next turn waits until the lines on screen have been read (capped so a chatty moment can't stall the game)
+async function readPause(){
+  const t0=S.rt;
+  while((S.sayQ.length||S.bubbles.some(b=>b.dur-(S.rt-b.t0)>.8))&&S.rt-t0<6)await wait(.1);
 }
 // a bot soldier teases the humans; the given speaker is used when it is a bot
 function taunt(pool,speaker){
@@ -856,7 +870,7 @@ function shake(a){if(!reduceMotion){S.shakeT=S.rt;S.shakeA=a}}
 // ---------- animations ----------
 async function hop(t,from,to,opt={}){
   if(to.x!==from.x)t.face=(to.x<from.x?-1:1)*(opt.back?-1:1);
-  const dur=(opt.dur||.2)*(TABLE?1.6:1);
+  const dur=(opt.dur||.2)*(TABLE?2.1:1);
   t.anim={kind:'hop',from,to,t0:S.gt,dur,h:opt.h||.42};
   await wait(dur);
   t.anim=null; t.landT=S.gt; if(!opt.quiet)sfx.step();
@@ -896,9 +910,7 @@ async function move(t,roll){
   if(t.p===-1){
     await hop(t,posOf(t),posAt(seat,0,t.i),{h:1.1,dur:.38});
     t.p=0; t.soot=false; t.splat=0; sfx.out();
-    const mate=S.tokens.find(o=>o!==t&&o.seat===seat&&o.p===0&&!o.mate);
-    if(mate)await squadUp(t,mate);
-    else if(!await ceasefire(t))say(t,'out',.5);
+    if(!await ceasefire(t))say(t,'out',.5);
     return{captured:false,home:false};
   }
   const m=t.mate,steps=stepOf(t,roll);
@@ -918,12 +930,13 @@ async function move(t,roll){
     return{captured:true,home:false,extra:onMystery(t)?await mystery(t):false};
   }
   if(onMystery(t))return{captured:false,home:false,extra:await mystery(t)};
-  // ending on your own lone soldier: kick it (the Boot) or stack up with it
-  if(t.p<56&&!t.mate){
+  // ending on your own lone soldier (not on a star): kick it (the Boot), stack up with it, or just share the square
+  if(t.p<56&&!t.mate&&!onStar(seat,t.p)){
     const mate=S.tokens.find(o=>o!==t&&o.seat===seat&&o.p===t.p&&!o.mate);
     if(mate){
-      if(t.p<=50&&!S.booted&&mate.p+3<=56){const r=await bootOffer(t,mate);if(r)return r}
-      await squadUp(t,mate);
+      const c=await joinChoice(t,mate,t.p<=50&&!S.booted&&mate.p+3<=56);
+      if(c==='boot')return await bootOffer(t,mate);
+      if(c==='stack')await squadUp(t,mate);
     }
   }
   if(t.p===56){
@@ -936,15 +949,19 @@ async function move(t,roll){
   else if(t.p<=50&&SAFE.has(idxOf(t))&&!STARTS.has(idxOf(t)))say(t,'safe',.3);
   return{captured:false,home:false};
 }
+// humans choose: tap the teammate to boot him, "Stack up", or "Stay apart"; bots boot when it pays, else stack half the time
+async function joinChoice(t,mate,canBoot){
+  if(isHuman(t.seat)){
+    S.selectable=canBoot?[mate]:[];S.phase=canBoot?'boot':'join';
+    const pending=new Promise(r=>S.awaitPick=r);ui();
+    const r=await pending;S.awaitPick=null;S.selectable=[];S.phase='moving';ui();
+    return r==='apart'?'apart':r?'boot':'stack';
+  }
+  if(canBoot&&botBoot(mate))return'boot';
+  return Math.random()<.5?'stack':'apart';
+}
 // the boot: ending a move on your own soldier lets you kick it 3 squares on; it captures what it lands on
 async function bootOffer(t,mate){
-  let yes;
-  if(isHuman(t.seat)){
-    S.selectable=[mate];S.phase='boot';
-    const pending=new Promise(r=>S.awaitPick=r);ui();
-    yes=!!(await pending);S.awaitPick=null;S.selectable=[];S.phase='moving';ui();
-  }else yes=botBoot(mate);
-  if(!yes)return null;
   S.booted=true;S.boots++;
   const from={x:mate.dx,y:mate.dy},np=mate.p+3,to=posAt(mate.seat,np,mate.i);
   sfx.kick();shake(5);t.landT=S.gt;
@@ -960,8 +977,7 @@ async function bootOffer(t,mate){
     await capture(mate,victims,'brawl',victims.some(v=>isMarked(v,mate.seat)),false,'boot');
     return{captured:true,home:false};
   }
-  const own=S.tokens.find(o=>o!==mate&&o!==t&&o.seat===mate.seat&&o.p===np&&!o.mate);
-  if(own)await squadUp(mate,own);else await wait(.3);
+  await wait(.3);
   return{captured:false,home:false};
 }
 function botBoot(mate){
@@ -1198,10 +1214,10 @@ function roll(seat){
     const human=isHuman(seat);
     S.dice.seat=seat;
     if(human){S.phase='roll';S.idleT=S.rt;S.idleSaid=false;ui();await new Promise(r=>S.awaitRoll=r);S.awaitRoll=null}
-    else await wait(TABLE?1:.45);
+    else await wait(TABLE?1.4:.45);
     S.phase='rolling';ui();
     S.dice.rolling=true; S.dice.t0=S.gt; sfx.rattle();
-    await wait(TABLE?.9:.55);
+    await wait(TABLE?1.1:.55);
     const v=human&&S.forced?S.forced:fairRoll(); if(human)S.forced=0;
     S.dice.v=v; S.dice.rolling=false; sfx.settle();
     S.hist[seat].push(v);
@@ -1301,7 +1317,7 @@ async function loop(){
   while(!S.over){
     await turn(S.turn);
     if(S.over)break;
-    if(TABLE)await wait(.6);
+    if(TABLE){await wait(.9);await readPause()}
     endTurnGrudges(S.turn);
     // retreat orders arm at the end of the turn they were given and expire after the next one
     if(S.retreat&&S.retreat.seat===S.turn){if(S.retreat.armed)S.retreat=null;else S.retreat.armed=true}
@@ -1671,6 +1687,8 @@ function wrap(text,maxW){
 }
 function drawBubbles(){
   S.bubbles=S.bubbles.filter(b=>S.rt-b.t0<b.dur);
+  S.sayQ=S.sayQ.filter(b=>S.rt-b.qt<5);
+  while(S.bubbles.length<2&&S.sayQ.length)showBubble(S.sayQ.shift());
   const fs=Math.max(13,Math.round(cs*.46));
   ctx.font=LOOK==='ink'?`${fs}px "Patrick Hand",cursive`:`500 ${fs}px Fredoka,sans-serif`;
   if(TABLE)return drawTableBubbles();
@@ -1699,19 +1717,26 @@ function drawBubbles(){
 function drawTableBubbles(){
   const fs=Math.max(16,Math.round(cs*.56)),ink=LOOK==='ink';
   ctx.font=`${fs}px "Patrick Hand",cursive`;
+  // screen boxes already taken: the turn pad (a DOM element over the canvas) and each bubble placed this frame
+  const taken=[],pad=$('#pad');
+  if(!pad.hidden){const p=pad.getBoundingClientRect(),c=cv.getBoundingClientRect();taken.push([p.left-c.left,p.top-c.top,p.right-c.left,p.bottom-c.top])}
+  const hit=(r,q)=>r[0]<q[2]+4&&r[2]>q[0]-4&&r[1]<q[3]+4&&r[3]>q[1]-4;
   for(const b of S.bubbles){
     const t=b.tok,age=S.rt-b.t0,a=age<.15?age/.15:age>b.dur-.4?(b.dur-age)/.4:1,ang=FACE[t.seat];
     const tx=ox+t.dx*cs,ty=oy+(t.dy+.3)*cs-cs*.5*t.sc,rise=cs*.62*t.sc+(t.chute?cs*1.1:0);
     const maxW=Math.min(Math.min(W,H)*.6,Math.max(170,cs*6)),lines=wrap(b.text,maxW-22);
     const w=Math.max(...lines.map(l=>ctx.measureText(l).width))+22,hh=lines.length*fs*1.15+14;
-    const co=Math.cos(ang),si=Math.sin(ang),fits=(lx,ly)=>[[lx,ly],[lx+w,ly],[lx,ly+hh],[lx+w,ly+hh]].every(([u,v])=>{
-      const X=tx+u*co-v*si,Y=ty+u*si+v*co;return X>2&&X<W-2&&Y>2&&Y<H-2});
-    let best=null;
-    for(const below of[false,true])for(const sh of[0,-.3,.3,-.45,.45]){
-      const lx=-w/2+sh*w,ly=below?rise*.2+12:-rise-hh-12;
-      if(fits(lx,ly)){best={lx,ly,below};break}
+    const co=Math.cos(ang),si=Math.sin(ang),box=(lx,ly)=>{const P=[[lx,ly],[lx+w,ly],[lx,ly+hh],[lx+w,ly+hh]].map(([u,v])=>[tx+u*co-v*si,ty+u*si+v*co]);
+      return[Math.min(...P.map(p=>p[0])),Math.min(...P.map(p=>p[1])),Math.max(...P.map(p=>p[0])),Math.max(...P.map(p=>p[1]))]};
+    const inside=r=>r[0]>2&&r[1]>2&&r[2]<W-2&&r[3]<H-2;
+    // candidates: above / below the soldier, slid sideways, then pushed further out; the spot it had last frame goes first
+    const cands=[];
+    for(const lift of[0,1,2])for(const below of[false,true])for(const sh of[0,-.3,.3,-.5,.5]){
+      const ly=below?rise*.2+12+lift*(hh+8):-rise-hh-12-lift*(hh+8);cands.push({lx:-w/2+sh*w,ly,below,key:lift+':'+below+':'+sh});
     }
-    if(!best)best={lx:-w/2,ly:-rise-hh-12,below:false};
+    if(b.key){const k=cands.findIndex(c=>c.key===b.key);if(k>0)cands.unshift(cands.splice(k,1)[0])}
+    let best=cands.find(c=>{const r=box(c.lx,c.ly);return inside(r)&&!taken.some(q=>hit(r,q))})||cands.find(c=>inside(box(c.lx,c.ly)))||cands[0];
+    b.key=best.key;taken.push(box(best.lx,best.ly));
     const{lx,ly,below}=best;
     ctx.save();ctx.translate(tx,ty);ctx.rotate(ang);ctx.globalAlpha=clamp(a,0,1);
     ctx.fillStyle=PAPER;ctx.strokeStyle=INK;ctx.lineWidth=Math.max(2,cs*.06);
@@ -1899,8 +1924,8 @@ function ui(){
   const you=isHuman(s)&&soloHuman();
   if(!S.started)txt='Choose who plays, then start';
   else if(S.over)txt=you?'You won!':`${name} won`;
-  else if(isHuman(s)&&!you)txt=`${name}: `+({boot:'tap your teammate to kick him 3 squares, or stack up',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
-  else if(isHuman(s))txt={boot:'Tap your teammate to kick him 3 squares, or stack up',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
+  else if(isHuman(s)&&!you)txt=`${name}: `+({boot:'tap your teammate to kick him 3 squares, stack up, or stay apart',join:'stack up with your teammate, or stay apart?',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
+  else if(isHuman(s))txt={boot:'Tap your teammate to kick him 3 squares, stack up, or stay apart',join:'Stack up with your teammate, or stay apart?',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
   else txt={nomove:`${name}: no move`,three:`${name}: three sixes, turn lost`}[S.phase]||`${name} is playing`;
   if(!S.over&&S.retreat&&S.retreat.armed&&S.retreat.seat===s&&(S.phase==='roll'||S.phase==='rolling'))
     txt=you?'Retreat orders: this roll moves backwards':`${name}: retreat orders, this roll moves backwards`;
@@ -1910,8 +1935,10 @@ function ui(){
   const h=S.hist[s],six=h.filter(v=>v===6).length;
   $('#hLast').textContent=h.slice(-8).join(' ')||'-';
   $('#hSix').textContent=`${you?'Your':name+"'s"} sixes: ${six} of ${h.length} (fair: ${(h.length/6).toFixed(1)})`;
-  $('#bSkip').hidden=!S.awaitPick||(S.phase!=='bomb'&&S.phase!=='boot');
-  $('#bSkip').textContent=S.phase==='boot'?'Stack up':'Move instead';
+  const joining=S.phase==='boot'||S.phase==='join';
+  $('#bSkip').hidden=!S.awaitPick||(S.phase!=='bomb'&&!joining);
+  $('#bSkip').textContent=joining?'Stack up':'Move instead';
+  $('#bApart').hidden=!S.awaitPick||!joining;
   $('#bSpeed').textContent=`Speed ${SPEED}x`;
   if(TABLE&&W)placePad(true);
   if(VOICE==='speech'&&!speechReady())$('#turnText').textContent+=' (speech not available here, using gibberish)';
@@ -1923,7 +1950,8 @@ function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll()}
 const DRILLS={bomb:()=>bombDrill(),revenge:revengeDrill,mystery:mysteryDrill,meltdown:meltdownDrill,rivals:rivalsDrill,ceasefire:ceasefireDrill,
   reinforce:()=>reinforceDrill(),boot:bootDrill,squad:squadDrill,brawl:brawlDrill};
 $('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e.target.blur();if(f)f()};
-$('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'))S.awaitPick(null)};
+$('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'||S.phase==='join'))S.awaitPick(null)};
+$('#bApart').onclick=()=>{if(S.awaitPick&&(S.phase==='boot'||S.phase==='join'))S.awaitPick('apart')};
 $('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;try{localStorage.setItem('lw.speed',SPEED)}catch(e){}ui()};
 $('#bSound').onclick=()=>{soundOn=!soundOn;if(soundOn&&S.started&&!S.over)musicPlay();else if(!soundOn)musicStop();ui()};
 $('#bMusic').onclick=()=>{MUSIC.on=!MUSIC.on;try{localStorage.setItem('lw.music',MUSIC.on?'1':'0')}catch(e){}if(MUSIC.on&&S.started&&!S.over)musicPlay(true);else musicStop();ui()};
@@ -1957,10 +1985,10 @@ function placePad(force){
   if(!force&&want===padSeat)return;padSeat=want;
   const pad=$('#pad');
   if(!TABLE){
-    pad.hidden=true;const dk=$('#dock');dk.insertBefore($('#turn'),dk.firstChild);dk.insertBefore(dcv,$('#hist'));dk.insertBefore($('#bSkip'),$('#hist'));
+    pad.hidden=true;const dk=$('#dock');dk.insertBefore($('#turn'),dk.firstChild);dk.insertBefore(dcv,$('#hist'));dk.insertBefore($('#bSkip'),$('#hist'));dk.insertBefore($('#bApart'),$('#hist'));
     DS=68;dcv.style.cssText='';
   }else{
-    pad.hidden=false;if(dcv.parentNode!==pad){pad.append(dcv,$('#turn'),$('#bSkip'))}
+    pad.hidden=false;if(dcv.parentNode!==pad){pad.append(dcv,$('#turn'),$('#bSkip'),$('#bApart'))}
     const s=S.dice.seat,[bx,by]=SEATS[s].base,vert=H-Bd>=W-Bd,gap=vert?(H-Bd)/2:(W-Bd)/2;
     DS=Math.round(clamp(Math.min(cs*2.2,gap-150),56,130));
     Object.assign(dcv.style,{width:DS+'px',height:DS+'px'});
