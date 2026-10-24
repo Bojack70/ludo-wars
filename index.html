@@ -31,8 +31,8 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
 #dock{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
 #turn{display:flex;align-items:center;gap:8px;font-size:19px;min-width:0}
 #chip{width:14px;height:14px;border-radius:50%;flex:none;border:1.5px solid var(--line)}
-#dice{width:68px;height:68px;cursor:pointer;flex:none;border-radius:12px}
-#pad{position:absolute;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);
+#dice{width:68px;height:68px;cursor:pointer;flex:none;border-radius:12px;touch-action:manipulation}
+#pad{position:absolute;z-index:2;touch-action:manipulation;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);
   border:3px solid var(--line);border-radius:16px;transition:left .35s,top .35s,transform .35s}
 #pad[hidden]{display:none}
 #pad #turn{font-size:clamp(17px,2.4vmin,24px);max-width:240px;text-align:center;justify-content:center}
@@ -496,7 +496,7 @@ function newState(){
     name:names[s*4+i],miss:0,tantrumT:-9});
   return{tokens,on,turn:first,gt:0,rt:S?S.rt:0,waiters:[],awaitRoll:null,awaitPick:null,selectable:[],forced:0,
     dice:{v:6,rolling:false,seat:first,t0:0},hist:[[],[],[],[]],drought:[0,0,0,0],
-    bubbles:[],sayQ:[],pops:[],parts:[],shakeT:-9,shakeA:0,over:false,winner:-1,phase:'roll',captures:0,
+    bubbles:[],sayQ:[],wantRoll:false,pops:[],parts:[],shakeT:-9,shakeA:0,over:false,winner:-1,phase:'roll',captures:0,
     bombs:[],booms:0,bombHits:0,flashT:-9,grudges:[],marks:0,paybacks:0,
     retreat:null,crate:null,mystForce:null,mystNext:'good',mysteries:0,mystGood:0,retreats:0,
     rivals:new Map(),rivalTop:null,epitaphs:[],ceasefires:0,meltdowns:0,forceCease:false,ceased:new Set(),ceaseUsed:[],
@@ -1213,7 +1213,7 @@ function roll(seat){
   return new Promise(async res=>{
     const human=isHuman(seat);
     S.dice.seat=seat;
-    if(human){S.phase='roll';S.idleT=S.rt;S.idleSaid=false;ui();await new Promise(r=>S.awaitRoll=r);S.awaitRoll=null}
+    if(human){S.phase='roll';S.idleT=S.rt;S.idleSaid=false;ui();if(S.wantRoll)S.wantRoll=false;else{await new Promise(r=>S.awaitRoll=r);S.awaitRoll=null}}
     else await wait(TABLE?1.4:.45);
     S.phase='rolling';ui();
     S.dice.rolling=true; S.dice.t0=S.gt; sfx.rattle();
@@ -1317,7 +1317,8 @@ async function loop(){
   while(!S.over){
     await turn(S.turn);
     if(S.over)break;
-    if(TABLE){await wait(.9);await readPause()}
+    // table mode: the pad moves to the next player straight away, and a tap during the read pause is remembered and rolls once the pause ends (it never cuts the reading short)
+    if(TABLE){await wait(.9);let n=S.turn;do n=(n+1)%4;while(!S.on[n]);S.dice.seat=n;S.wantRoll=false;S.phase='next';ui();await readPause()}
     endTurnGrudges(S.turn);
     // retreat orders arm at the end of the turn they were given and expire after the next one
     if(S.retreat&&S.retreat.seat===S.turn){if(S.retreat.armed)S.retreat=null;else S.retreat.armed=true}
@@ -1898,7 +1899,7 @@ function drawDice(){
   c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,s,s);
   let v=d.v,rot=0,sc=1;
   if(d.rolling){v=1+Math.floor(hash(Math.floor(S.gt*14))*6);rot=(hash(Math.floor(S.gt*14)+.5)-.5)*.7}
-  if(S.phase==='roll'&&S.awaitRoll)sc=1+Math.sin(S.rt*6)*.05;
+  if((S.phase==='roll'&&S.awaitRoll)||(S.phase==='next'&&isHuman(S.dice.seat)))sc=1+Math.sin(S.rt*6)*.05;
   c.save();c.translate(s/2,s/2);c.rotate(rot);c.scale(sc,sc);c.translate(-s/2,-s/2);
   const m=7,z=s-m*2;
   if(ink){
@@ -1918,14 +1919,14 @@ function drawDice(){
 
 // ---------- UI ----------
 function ui(){
-  const s=S.over?S.winner:S.turn,name=SEATS[s].name;
+  const s=S.over?S.winner:S.phase==='next'?S.dice.seat:S.turn,name=SEATS[s].name;
   $('#chip').style.background=seatCol(s);
   let txt;
   const you=isHuman(s)&&soloHuman();
   if(!S.started)txt='Choose who plays, then start';
   else if(S.over)txt=you?'You won!':`${name} won`;
-  else if(isHuman(s)&&!you)txt=`${name}: `+({boot:'tap your teammate to kick him 3 squares, stack up, or stay apart',join:'stack up with your teammate, or stay apart?',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
-  else if(isHuman(s))txt={boot:'Tap your teammate to kick him 3 squares, stack up, or stay apart',join:'Stack up with your teammate, or stay apart?',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
+  else if(isHuman(s)&&!you)txt=`${name}: `+({next:'tap to roll',boot:'tap your teammate to kick him 3 squares, stack up, or stay apart',join:'stack up with your teammate, or stay apart?',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
+  else if(isHuman(s))txt={next:'Your turn: tap to roll',boot:'Tap your teammate to kick him 3 squares, stack up, or stay apart',join:'Stack up with your teammate, or stay apart?',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
   else txt={nomove:`${name}: no move`,three:`${name}: three sixes, turn lost`}[S.phase]||`${name} is playing`;
   if(!S.over&&S.retreat&&S.retreat.armed&&S.retreat.seat===s&&(S.phase==='roll'||S.phase==='rolling'))
     txt=you?'Retreat orders: this roll moves backwards':`${name}: retreat orders, this roll moves backwards`;
@@ -1946,7 +1947,7 @@ function ui(){
   $('#bMusic').textContent=MUSIC.on?'Music on':'Music off';
   document.documentElement.dataset.look=LOOK;
 }
-function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll()}
+function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll();else if(S.phase==='next'&&isHuman(S.dice.seat))S.wantRoll=true}
 const DRILLS={bomb:()=>bombDrill(),revenge:revengeDrill,mystery:mysteryDrill,meltdown:meltdownDrill,rivals:rivalsDrill,ceasefire:ceasefireDrill,
   reinforce:()=>reinforceDrill(),boot:bootDrill,squad:squadDrill,brawl:brawlDrill};
 $('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e.target.blur();if(f)f()};
@@ -1958,7 +1959,8 @@ $('#bMusic').onclick=()=>{MUSIC.on=!MUSIC.on;try{localStorage.setItem('lw.music'
 $('#bTable').onclick=()=>{TABLE=!TABLE;try{localStorage.setItem('lw.table',TABLE?'1':'0')}catch(e){}$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';$('#hint').hidden=TABLE;resize()};
 $('#hint').hidden=TABLE;$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';
 $('#bNew').onclick=()=>{ac();newGame()};
-dcv.onclick=requestRoll;
+// the whole turn pad (or the dock dice) rolls on touch-down: a click needs a still finger and was missed on the tablet
+addEventListener('pointerdown',e=>{const el=e.target;if(el.closest&&el.closest('#pad,#dice')&&!el.closest('button')){e.preventDefault();requestRoll()}});
 cv.addEventListener('pointerdown',e=>{
   ac();
   const r=cv.getBoundingClientRect(),bx=(e.clientX-r.left-ox)/cs,by=(e.clientY-r.top-oy)/cs;
@@ -1966,7 +1968,7 @@ cv.addEventListener('pointerdown',e=>{
     let best=null,bd=.75;
     for(const t of S.selectable){const d=Math.hypot(t.dx-bx,t.dy-.05-by);if(d<bd){bd=d;best=t}}
     if(best)S.awaitPick(best);
-  }else if(S.awaitRoll)requestRoll();
+  }else requestRoll();
 });
 addEventListener('keydown',e=>{
   if(e.target&&e.target.tagName==='INPUT'){if(e.key==='Enter')$('#bStart').click();return}
