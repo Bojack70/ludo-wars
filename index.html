@@ -88,6 +88,7 @@ button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outlin
     <button id="bTable" type="button">Table mode on</button>
     <button id="bSpeed" type="button">Speed 1x</button>
     <button id="bMusic" type="button">Music on</button>
+    <button id="bVoices" type="button">Voices on</button>
     <button id="bSound" type="button">Sound on</button>
     <button id="bNew" type="button">New game</button>
   </header>
@@ -453,7 +454,7 @@ function musicStop(){
   clearInterval(MUSIC.timer);MUSIC.timer=0;
   if(MUSIC.gain)MUSIC.gain.gain.setTargetAtTime(0,AC.currentTime,.25);
 }
-document.addEventListener('visibilitychange',()=>{if(document.hidden)musicStop();else if(S&&S.started&&!S.over)musicPlay()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){musicStop();voStop()}else if(S&&S.started&&!S.over)musicPlay()});
 
 // ---------- state ----------
 // Ink is the locked look (2026-10-19); the toy drawing code stays dormant behind LOOK
@@ -765,13 +766,14 @@ function sayText(t,text){
 }
 function showBubble(b){
   b.t0=S.rt;S.bubbles.push(b);
+  if(voSay(b))return;
   if(VOICE==='off'||!soundOn)sfx.pop();
   else voice(b.tok,b.text);
 }
 // table mode: the next turn waits until the lines on screen have been read (capped so a chatty moment can't stall the game)
 async function readPause(){
   const t0=S.rt;
-  while((S.sayQ.length||S.bubbles.some(b=>b.dur-(S.rt-b.t0)>.8))&&S.rt-t0<6)await wait(.1);
+  while((S.sayQ.length||VO.playing||VO.q.length||S.bubbles.some(b=>b.dur-(S.rt-b.t0)>.8))&&S.rt-t0<6)await wait(.1);
 }
 // a bot soldier teases the humans; the given speaker is used when it is a bot
 function taunt(pool,speaker){
@@ -828,6 +830,51 @@ function speak(t,text){
   }catch(e){speechBroken=true;babble(t,text)}
 }
 if('speechSynthesis' in window)try{speechSynthesis.onvoiceschanged=()=>{VOICES=null}}catch(e){}
+
+// ---------- voice-over (2026-11-03): every line pre-recorded with VoxCPM2, one voice per team ----------
+// Red = female cadet, Green = posh male sergeant, Yellow = timid female, Blue = deadpan male (bake: research/ludo-voice-test).
+// voices/index.json maps "R|text" to [chunk file, start s, length s]; chunks are fetched and decoded when first needed and the
+// 8 most recent are kept. One line speaks at a time; a line that waited over 4 s is dropped (its bubble still shows).
+// Lines with a name slot ({victim}, {leader}...) have no recording and keep the pop.
+const VO={on:true,index:null,chunks:new Map(),q:[],playing:null,ducked:false,voiced:0,silent:0,misses:[]};
+try{if(localStorage.getItem('lw.voices')==='0')VO.on=false}catch(e){}
+fetch('voices/index.json').then(r=>r.ok?r.json():null).then(j=>{VO.index=j}).catch(()=>{});
+function voChunk(name){
+  let p=VO.chunks.get(name);
+  if(p){VO.chunks.delete(name);VO.chunks.set(name,p);return p}
+  p=fetch('voices/'+name).then(r=>{if(!r.ok)throw new Error(r.status);return r.arrayBuffer()})
+    .then(buf=>new Promise((ok,no)=>ac().decodeAudioData(buf,ok,no)));
+  p.catch(()=>VO.chunks.delete(name));
+  VO.chunks.set(name,p);if(VO.chunks.size>8)VO.chunks.delete(VO.chunks.keys().next().value);
+  return p;
+}
+// true when the line has a voice, so the caller skips the pop
+function voSay(b){
+  if(!VO.on||!soundOn||!VO.index||!ac())return false;
+  const c=VO.index[PERSONA[b.tok.seat]+'|'+b.text];if(!c){VO.silent++;VO.misses.push(PERSONA[b.tok.seat]+'|'+b.text);if(VO.misses.length>30)VO.misses.shift();return false}
+  VO.voiced++;b.dur=Math.max(b.dur,c[2]+1);
+  VO.q.push({c,at:performance.now()});voChunk(c[0]).catch(()=>{});voNext();
+  return true;
+}
+function voDuck(on){
+  if(!MUSIC.gain||!AC||on===VO.ducked)return;
+  VO.ducked=on;if(MUSIC.timer)MUSIC.gain.gain.setTargetAtTime(on?.22:.55,AC.currentTime,.12);
+}
+function voNext(){
+  if(VO.playing)return;
+  while(VO.q.length&&performance.now()-VO.q[0].at>4000)VO.q.shift();
+  const it=VO.q.shift();if(!it){voDuck(false);return}
+  VO.playing=it;
+  voChunk(it.c[0]).then(buf=>{
+    if(VO.playing!==it)return;
+    const a=ac(),src=a.createBufferSource();src.buffer=buf;src.connect(a.destination);
+    // 'ended' can fail to fire (audio device asleep, context suspended), so a timer also closes the line
+    const done=()=>{if(VO.playing===it){VO.playing=null;clearTimeout(it.timer);setTimeout(voNext,180)}};
+    src.onended=done;it.timer=setTimeout(done,(it.c[2]+.6)*1000);
+    it.src=src;voDuck(true);src.start(0,Math.max(0,it.c[1]-.05),it.c[2]+.1);
+  }).catch(()=>{if(VO.playing===it){VO.playing=null;voNext()}});
+}
+function voStop(){VO.q=[];const p=VO.playing;VO.playing=null;if(p&&p.src)try{p.src.stop()}catch(e){}voDuck(false)}
 function epitaph(v,kind){
   const p=posOf(v);
   S.epitaphs.push({x:p.x,y:p.y,text:pick(EPITAPH[kind]).replace('{n}',v.name),t0:S.rt,rot:(Math.random()-.5)*.5});
@@ -1328,7 +1375,7 @@ async function loop(){
 }
 // a fresh state drops the old waiters, which leaves any previous loop suspended forever (that is the cancel)
 function newGame(){
-  musicStop();S=newState();applyNames();buildBoard();ui();showSetup();
+  musicStop();voStop();S=newState();applyNames();buildBoard();ui();showSetup();
 }
 function startGame(){
   GAMES++;try{localStorage.setItem('lw.games',GAMES)}catch(e){}
@@ -1945,6 +1992,7 @@ function ui(){
   if(VOICE==='speech'&&!speechReady())$('#turnText').textContent+=' (speech not available here, using gibberish)';
   $('#bSound').textContent=soundOn?'Sound on':'Sound off';
   $('#bMusic').textContent=MUSIC.on?'Music on':'Music off';
+  $('#bVoices').textContent=VO.on?'Voices on':'Voices off';
   document.documentElement.dataset.look=LOOK;
 }
 function requestRoll(){ac();if(S.awaitRoll&&!S.drill)S.awaitRoll();else if(S.phase==='next'&&isHuman(S.dice.seat))S.wantRoll=true}
@@ -1954,7 +2002,8 @@ $('#tests').onchange=e=>{ac();const f=DRILLS[e.target.value];e.target.value='';e
 $('#bSkip').onclick=()=>{if(S.awaitPick&&(S.phase==='bomb'||S.phase==='boot'||S.phase==='join'))S.awaitPick(null)};
 $('#bApart').onclick=()=>{if(S.awaitPick&&(S.phase==='boot'||S.phase==='join'))S.awaitPick('apart')};
 $('#bSpeed').onclick=()=>{SPEED=SPEED===1?2:SPEED===2?3:1;try{localStorage.setItem('lw.speed',SPEED)}catch(e){}ui()};
-$('#bSound').onclick=()=>{soundOn=!soundOn;if(soundOn&&S.started&&!S.over)musicPlay();else if(!soundOn)musicStop();ui()};
+$('#bSound').onclick=()=>{soundOn=!soundOn;if(soundOn&&S.started&&!S.over)musicPlay();else if(!soundOn){musicStop();voStop()}ui()};
+$('#bVoices').onclick=()=>{VO.on=!VO.on;try{localStorage.setItem('lw.voices',VO.on?'1':'0')}catch(e){}if(!VO.on)voStop();ui()};
 $('#bMusic').onclick=()=>{MUSIC.on=!MUSIC.on;try{localStorage.setItem('lw.music',MUSIC.on?'1':'0')}catch(e){}if(MUSIC.on&&S.started&&!S.over)musicPlay(true);else musicStop();ui()};
 $('#bTable').onclick=()=>{TABLE=!TABLE;try{localStorage.setItem('lw.table',TABLE?'1':'0')}catch(e){}$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';$('#hint').hidden=TABLE;resize()};
 $('#hint').hidden=TABLE;$('#bTable').textContent=TABLE?'Table mode on':'Table mode off';
@@ -2030,7 +2079,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
-window.__lw={get S(){return S},get MUSIC(){return MUSIC},frame,newGame,TRACK,SEATS};
+window.__lw={get S(){return S},get MUSIC(){return MUSIC},VO,voSay,ac,frame,newGame,TRACK,SEATS};
 S=newState();applyNames();
 resize();ui();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{buildBoard()});
