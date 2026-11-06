@@ -312,6 +312,33 @@ Object.assign(MORE,{
   retreatOrder:["Retreat? But I was winning!","Backwards? Now? Seriously?"],
   retreating:["Beep beep. Coming through backwards.","Walking backwards like a pro."],
 });
+// 2026-11-06 banter: filler talk for quiet moments (the mover mid-walk, a rival mocking a 1 or 2); one set per team voice
+Object.assign(MORE,{
+  march:["R:Left, right, left, right!","R:Move it, move it!","R:Eyes front, boots forward!","R:Double time, soldier!","R:Hup! Hup! Hup!",
+    "R:No stopping till I say so!","R:Pick those knees up!","R:Forward march, and look sharp!","R:Every square is a victory!","R:Pace yourself? Never!",
+    "R:Corporal on the move!","R:Keep the line tight!","R:Sound off! One, two!","R:Ground taken. Next!",
+    "G:Make way. Sergeant coming through.","G:A gentle stroll. Rather pleasant.","G:Mind the boots. They're polished.","G:Onward, with dignity.",
+    "G:I do enjoy a brisk constitutional.","G:Splendid weather for conquest.","G:Do try to keep up, chaps.","G:One walks with purpose, you see.",
+    "G:Advancing. Elegantly.","G:The board is my parade ground.","G:Pip pip. Onward.","G:A sergeant never hurries. He arrives.",
+    "G:Tally ho, I suppose.","G:Excellent footwork, if I say so myself.",
+    "Y:Okay, okay, I'm going. I'm going.","Y:Is this the right way? It's fine.","Y:Please nobody look at me.","Y:Tiptoe, tiptoe, tiptoe.",
+    "Y:I'm just passing through. Hi. Bye.","Y:Don't trip. Don't trip. Don't trip.","Y:Oh, it's so open out here.","Y:I think I'm being brave right now.",
+    "Y:Nobody's behind me, right? Right?","Y:Small steps. Small brave steps.","Y:I'll just go quietly. Sorry.","Y:My legs are shaking, but they're walking.",
+    "Y:Is that a bomb? No. Okay. Phew.","Y:Walking. Walking. Totally normal.",
+    "B:Walking. The thrill never stops.","B:Another square. Living the dream.","B:Ah yes. More board.","B:I'm walking. Try to contain yourselves.",
+    "B:This is cardio, apparently.","B:My feet have opinions about this.","B:One square closer to nothing.","B:Just a guy. Walking. In a war.",
+    "B:Wow. Movement. Incredible.","B:I volunteered for this. Allegedly.","B:Somebody write this down. Or don't.","B:Same squares. Different day.",
+    "B:Walking, as one does.","B:Look at me go. Or don't. Fine."],
+  heckle:["R:That's it? My grandmother rolls harder!","R:Pathetic. Drop and give me twenty.","R:A tiny roll for a tiny soldier!",
+    "R:Call that a roll? I call it a nap.","R:Ha! Crawl, soldier, crawl!","R:I've seen snails with more ambition!","R:Put some arm into it!",
+    "R:Weak! Again! Oh, you can't.",
+    "G:Oh dear. How very modest.","G:A small roll. How on brand.","G:I've seen better rolls at breakfast.","G:Do they teach dice at your camp?",
+    "G:Charming. Truly, a heroic effort.","G:Rather disappointing, old bean.","G:Steady on. Don't strain yourself.","G:Was that a roll or a sneeze?",
+    "Y:Oh, a small one. That's okay! I think.","Y:Aw. Better luck next time? Maybe?","Y:Is it bad that I'm relieved?","Y:That's not a lot. Sorry. Sorry!",
+    "Y:I'd have rolled the same. Honestly.","Y:Phew. Slow is good. For me.","Y:Oh no. I mean, oh good. I mean, sorry.","Y:Tiny steps are still steps! Right?",
+    "B:Wow. A whole little roll.","B:Impressive. In the opposite direction.","B:Take your time getting nowhere.","B:That'll show the board.",
+    "B:Truly, the dice fear you.","B:A legend in the making. Not this one.","B:Bold strategy. Rolling small.","B:I've seen more movement in a painting."],
+});
 for(const k in MORE)LINES[k]=(LINES[k]||[]).concat(MORE[k]);
 
 const recent=[];
@@ -756,10 +783,10 @@ function say(t,pool,prob=1,vars){
   if(Math.random()>prob)return;
   sayText(t,line(pool,t,vars));
 }
-function sayText(t,text){
+function sayText(t,text,filler){
   if(!t)return;
   S.bubbles=S.bubbles.filter(b=>b.tok!==t);S.sayQ=S.sayQ.filter(b=>b.tok!==t);
-  const b={tok:t,text,dur:TABLE?clamp(3+.5*text.split(' ').length,5,10):4.5};S.said.push(text);
+  const b={tok:t,text,filler:!!filler,dur:TABLE?clamp(3+.5*text.split(' ').length,5,10):4.5};S.said.push(text);
   // two bubbles at most; a third line waits its turn instead of knocking an unread one off the screen
   if(S.bubbles.length>=2){b.qt=S.rt;S.sayQ.push(b);return}
   showBubble(b);
@@ -773,7 +800,12 @@ function showBubble(b){
 // table mode: the next turn waits until the lines on screen have been read (capped so a chatty moment can't stall the game)
 async function readPause(){
   const t0=S.rt;
-  while((S.sayQ.length||VO.playing||VO.q.length||S.bubbles.some(b=>b.dur-(S.rt-b.t0)>.8))&&S.rt-t0<6)await wait(.1);
+  while((S.sayQ.length||(VO.playing&&!VO.playing.f)||VO.q.some(x=>!x.f)||S.bubbles.some(b=>!b.filler&&b.dur-(S.rt-b.t0)>.8))&&S.rt-t0<6)await wait(.1);
+}
+// banter fills silence only: nothing on screen, nothing speaking; the read pause ignores it, so turns never get longer
+function banter(t,pool,prob){
+  if(!t||S.bubbles.length||S.sayQ.length||VO.playing||VO.q.length||Math.random()>prob)return;
+  sayText(t,line(pool,t),true);
 }
 // a bot soldier teases the humans; the given speaker is used when it is a bot
 function taunt(pool,speaker){
@@ -853,7 +885,7 @@ function voSay(b){
   if(!VO.on||!soundOn||!VO.index||!ac())return false;
   const c=VO.index[PERSONA[b.tok.seat]+'|'+b.text];if(!c){VO.silent++;VO.misses.push(PERSONA[b.tok.seat]+'|'+b.text);if(VO.misses.length>30)VO.misses.shift();return false}
   VO.voiced++;b.dur=Math.max(b.dur,c[2]+1);
-  VO.q.push({c,at:performance.now()});voChunk(c[0]).catch(()=>{});voNext();
+  VO.q.push({c,at:performance.now(),f:b.filler});voChunk(c[0]).catch(()=>{});voNext();
   return true;
 }
 function voDuck(on){
@@ -1283,6 +1315,7 @@ async function turn(seat){
     again=false;
     const v=await roll(seat);
     const allBase=nobodyOut();
+    if(v<=2){const rivals=S.tokens.filter(t=>t.seat!==seat&&S.on[t.seat]&&t.p<56);if(rivals.length)banter(pick(rivals),'heckle',.5)}
     if(v===6){
       S.drought[seat]=0; sixes++;
       if(sixes===3){sfx.buzz();say(pick(S.tokens.filter(t=>t.seat===seat&&t.p<56)),'three');S.phase='three';ui();await wait(1.3);break}
@@ -1346,6 +1379,7 @@ async function turn(seat){
       tok=human?moves[0]:botPick(seat,v,moves);
     }
     S.phase='moving';ui();
+    if(tok.p>=0){const d=tok.p+stepOf(tok,v);if(d<56&&!victimsAt(seat,d).length)banter(tok,'march',.55)}
     const r=await move(tok,v);
     await director('move',{});
     if(missedBot&&missedBot.p>=0&&Math.random()<.8)taunt('missed',missedBot);
