@@ -579,6 +579,8 @@ function botPick(seat,roll,moves){
   let best=moves[0],bs=-1e9;
   const hot=S.bombs.filter(b=>b.fuse<=1);
   for(const t of moves){
+    // retreat orders: only worth spending when walking backwards lands on an enemy
+    if(orders(t)){const vs=victimsAt(seat,t.p-Math.min(stepOf(t,roll),t.p)),s=vs.length?90+Math.random()*4:-200+Math.random();if(s>bs){bs=s;best=t}continue}
     const np=t.p===-1?0:t.p+stepOf(t,roll); let s=np*.3+Math.random()*4;
     if(np===56)s+=60;
     if(np<=50){
@@ -693,14 +695,14 @@ function bootDrill(){
   if(!canDrill())return;
   const mine=S.tokens.filter(t=>t.seat===0),green=S.tokens.find(t=>t.seat===1&&t.i===0);
   mine.forEach(t=>{t.p=t.i===0?10:t.i===1?13:-1;t.soot=false});
-  clearRing([49,50,51,0,1,2,3],green);green.p=3;green.soot=false;S.retreat=null;
+  clearRing([49,50,51,0,1,2,3],green);green.p=3;green.soot=false;S.tokens.forEach(t=>t.ret=false);
   S.only=mine[0];S.forced=3;sayText(mine[0],"Watch this.");ui();
 }
 function brawlDrill(){
   // a Blue soldier stands 3 ahead of your only soldier out, far from his camp, with hecklers along his way home; next roll 3
   if(!canDrill())return;
   soloOut(14);const put=(seat,i,idx)=>{const t=S.tokens.find(t=>t.seat===seat&&t.i===i);t.p=(idx-SEATS[seat].start+52)%52;t.soot=false};
-  clearRing([1,2,3,4,31,43,44],null);S.retreat=null;
+  clearRing([1,2,3,4,31,43,44],null);S.tokens.forEach(t=>t.ret=false);
   put(3,0,4);put(1,0,2);put(2,0,31);put(1,1,43);put(2,1,44);
   S.grudges=S.grudges.filter(g=>g.hunter!==0);S.forced=3;ui();
 }
@@ -709,19 +711,19 @@ function squadDrill(){
   if(!canDrill())return;
   const mine=S.tokens.filter(t=>t.seat===0);
   mine.forEach(t=>{t.p=t.i===0?11:t.i===1?14:-1;t.soot=false;t.mate=null;t.top=false});
-  clearRing([49,50,51,0,1,2,3,4,5],null);S.retreat=null;
+  clearRing([49,50,51,0,1,2,3,4,5],null);S.tokens.forEach(t=>t.ret=false);
   S.only=mine[0];S.forced=3;sayText(mine[1],"Need a lift?");ui();
 }
 function meltdownDrill(){
   // one square from home, roll a 5: press again to keep escalating (the miss count stays on the soldier)
   if(!canDrill())return;
-  soloOut(55);S.retreat=null;S.forced=5;ui();
+  soloOut(55);S.tokens.forEach(t=>t.ret=false);S.forced=5;ui();
 }
 function rivalsDrill(){
   // Green is 3 ahead and you have already traded two captures with him: this one makes three
   if(!canDrill())return;
   const me=soloOut(14),green=S.tokens.find(t=>t.seat===1&&t.i===0);
-  clearRing([1,2,3,4],green);green.p=4;green.soot=false;S.retreat=null;
+  clearRing([1,2,3,4],green);green.p=4;green.soot=false;S.tokens.forEach(t=>t.ret=false);
   S.rivals.set([me.seed,green.seed].sort((a,b)=>a-b).join('-'),2);
   sayText(green,"Oh no. Not HIM again.");S.forced=3;ui();
 }
@@ -730,7 +732,7 @@ function ceasefireDrill(){
   if(!canDrill())return;
   soloOut((44-SEATS[0].start+52)%52);
   const green=S.tokens.find(t=>t.seat===1&&t.i===0);
-  clearRing([45,46,47],green);green.p=47;green.soot=false;S.retreat=null;
+  clearRing([45,46,47],green);green.p=47;green.soot=false;S.tokens.forEach(t=>t.ret=false);
   S.forceCease=true;S.forced=3;ui();
 }
 
@@ -741,7 +743,7 @@ function mysteryDrill(){
   const M=MYSTERIES[1];
   mine.forEach(t=>{t.p=t.i===0?(M-3-SEATS[0].start+52)%52:-1;t.soot=false});
   S.tokens.forEach(t=>{if(t.seat!==0&&t.p>=0&&t.p<=50&&[M-2,M-1,M].includes(idxOf(t)))t.p=-1});
-  S.retreat=null;S.forced=3;S.mystForce=S.mystNext;S.mystNext=S.mystNext==='good'?'bad':'good';
+  S.tokens.forEach(t=>t.ret=false);S.forced=3;S.mystForce=S.mystNext;S.mystNext=S.mystNext==='good'?'bad':'good';
   sfx.mystery();ui();
 }
 
@@ -1084,7 +1086,9 @@ async function reinforce(seat){
   await wait(.4);
 }
 
-// mystery square: 50/50 supply drop (extra roll) or retreat orders (next turn's first roll moves this soldier backwards)
+// mystery square: 50/50 supply drop (extra roll) or retreat orders. 2026-11-07 user rule: the orders stay on THIS soldier until
+// his player picks him; that one move goes backwards, then the orders are gone. Any other soldier can always be moved instead.
+const orders=t=>!!(t.ret||(t.mate&&t.mate.ret))&&t.p>=1&&t.p<=50;
 async function mystery(t){
   S.mysteries++;
   const good=S.mystForce?S.mystForce==='good':Math.random()<.5;S.mystForce=null;
@@ -1100,7 +1104,7 @@ async function mystery(t){
     await wait(.9);
     return true;
   }
-  S.retreat={tok:t,seat:t.seat,armed:false};S.retreats++;
+  t.ret=true;S.retreats++;
   sfx.wahwah();popText(p.x,p.y-1,'RETREAT!',t.seat,.75);say(t,'retreatOrder');
   await wait(1.1);
   return false;
@@ -1333,16 +1337,12 @@ async function turn(seat){
         }
       }
     }else if(allBase)S.drought[seat]++;
-    if(S.retreat&&S.retreat.seat===seat&&S.retreat.armed){
-      const rt=S.retreat.tok;S.retreat=null;
-      if(rt.p>=0&&rt.p<=50){
-        S.phase='moving';ui();
-        const hit=await retreatMove(rt,v);
-        if(v===6||hit)again=true;
-        continue;
-      }
-    }
+    // orders on a soldier who was sent back to camp are void
+    S.tokens.forEach(t=>{if(t.ret&&(t.p<1||t.p>50))t.ret=false});
     let moves=legal(seat,v);
+    // a soldier under retreat orders can always be picked: he walks backwards instead (his forward move is not offered)
+    moves=moves.filter(t=>!orders(t));
+    S.tokens.forEach(t=>{if(t.seat===seat&&orders(t)&&!(t.mate&&t.top)&&!moves.includes(t)&&Math.min(stepOf(t,v),t.p)>0)moves.push(t)});
     if(S.only&&seat===0){const o=S.only;S.only=null;if(moves.includes(o))moves=[o]}
     // over-rolled at the finish: the soldier closest to home loses it a little more each time
     const stuck=S.tokens.filter(t=>t.seat===seat&&t.p>=51&&t.p<56&&!(t.mate&&t.top)&&t.p+stepOf(t,v)>56).sort((a,b)=>b.p-a.p)[0];
@@ -1372,13 +1372,19 @@ async function turn(seat){
       tok=await new Promise(r=>S.awaitPick=r);
       S.awaitPick=null;S.selectable=[];
       // a human skipped a capture on a bot: that bot will say so after the move
-      const caps=o=>o.p>=0?victimsAt(seat,o.p+stepOf(o,v)).filter(x=>!isHuman(x.seat)):[];
+      const caps=o=>o.p>=0&&!orders(o)?victimsAt(seat,o.p+stepOf(o,v)).filter(x=>!isHuman(x.seat)):[];
       if(!caps(tok).length){const alt=moves.find(o=>o!==tok&&caps(o).length);if(alt)missedBot=caps(alt)[0]}
     }else{
       if(!human)await wait(.3);
       tok=human?moves[0]:botPick(seat,v,moves);
     }
     S.phase='moving';ui();
+    if(orders(tok)){
+      tok.ret=false;if(tok.mate)tok.mate.ret=false;
+      const hit=await retreatMove(tok,v);
+      if(v===6||hit)again=true;
+      continue;
+    }
     if(tok.p>=0){const d=tok.p+stepOf(tok,v);if(d<56&&!victimsAt(seat,d).length)banter(tok,'march',.55)}
     const r=await move(tok,v);
     await director('move',{});
@@ -1401,8 +1407,6 @@ async function loop(){
     // table mode: the pad moves to the next player straight away, and a tap during the read pause is remembered and rolls once the pause ends (it never cuts the reading short)
     if(TABLE){await wait(.9);let n=S.turn;do n=(n+1)%4;while(!S.on[n]);S.dice.seat=n;S.wantRoll=false;S.phase='next';ui();await readPause()}
     endTurnGrudges(S.turn);
-    // retreat orders arm at the end of the turn they were given and expire after the next one
-    if(S.retreat&&S.retreat.seat===S.turn){if(S.retreat.armed)S.retreat=null;else S.retreat.armed=true}
     do S.turn=(S.turn+1)%4;while(!S.on[S.turn]);
     ui();
   }
@@ -1450,7 +1454,8 @@ $('#seats').onclick=e=>{const b=e.target.closest&&e.target.closest('button');if(
   else if(b.dataset.m)pickModes[+b.dataset.s]=b.dataset.m;renderSeats()};
 $('#seats').oninput=e=>{if(e.target.dataset&&e.target.dataset.s!=null)pickTeams[+e.target.dataset.s]=e.target.value.slice(0,14)};
 $('#bStart').onclick=()=>{
-  if(LEVELS[LEVEL].url){location.href=LEVELS[LEVEL].url;return}
+  // the public GitHub copy adds a fresh query each time, so a tablet never opens an old cached level page
+  if(LEVELS[LEVEL].url){location.href=LEVELS[LEVEL].url+(location.hostname.endsWith('github.io')?'?r='+Date.now():'');return}
   ac();MODES=pickModes.slice();HUMANS=MODES.map(m=>m==='h');TEAMS=pickTeams.map(n=>n.trim());
   try{localStorage.setItem('lw.seats',JSON.stringify(MODES));localStorage.setItem('lw.humans',JSON.stringify(HUMANS));localStorage.setItem('lw.teams',JSON.stringify(TEAMS))}catch(e){}
   startGame();
@@ -1718,7 +1723,7 @@ function drawToken(t){
   for(let k=0;k<(t.splat||0);k++){const sx=(hash(t.seed+k*3.7)-.5)*h*.3,sy=-h*(.35+hash(t.seed*1.3+k)*.5);
     ctx.fillStyle=k%3===2?'#f2d24b':'#c8402f';ctx.beginPath();ctx.arc(sx,sy,h*(.045+hash(k+t.seed)*.03),0,Math.PI*2);ctx.fill()}
   if(t.p>=0&&t.p<=50&&!t.anim)S.grudges.filter(g=>g.target===t).forEach((g,k)=>drawMark(h,g,k));
-  if(S.retreat&&S.retreat.tok===t&&!t.anim){
+  if(orders(t)&&!(t.mate&&t.top)&&!t.anim){
     // backwards arrow over the head: points against the soldier's facing
     ctx.strokeStyle=INK;ctx.lineWidth=Math.max(1.5,h*.07);ctx.lineCap='round';
     const ay=-h*1.25+Math.sin(S.rt*5)*h*.04;
@@ -2009,8 +2014,7 @@ function ui(){
   else if(isHuman(s)&&!you)txt=`${name}: `+({next:'tap to roll',boot:'tap your teammate to kick him 3 squares, stack up, or stay apart',join:'stack up with your teammate, or stay apart?',bomb:'two sixes! Tap a soldier to plant a bomb (ends the turn) or move instead',roll:'roll the dice',rolling:'rolling...',pick:'pick a soldier to move',moving:'marching...',nomove:'no move this time',three:'three sixes, turn lost'}[S.phase]||'your turn');
   else if(isHuman(s))txt={next:'Your turn: tap to roll',boot:'Tap your teammate to kick him 3 squares, stack up, or stay apart',join:'Stack up with your teammate, or stay apart?',bomb:'Two sixes! Tap a soldier to plant a bomb (ends your turn) or move instead',roll:'Your turn: roll the dice',rolling:'Rolling...',pick:'Pick a soldier to move',moving:'Marching...',nomove:'No move this time',three:'Three sixes: turn lost'}[S.phase]||'Your turn';
   else txt={nomove:`${name}: no move`,three:`${name}: three sixes, turn lost`}[S.phase]||`${name} is playing`;
-  if(!S.over&&S.retreat&&S.retreat.armed&&S.retreat.seat===s&&(S.phase==='roll'||S.phase==='rolling'))
-    txt=you?'Retreat orders: this roll moves backwards':`${name}: retreat orders, this roll moves backwards`;
+  if(!S.over&&isHuman(s)&&S.phase==='pick'&&S.tokens.some(t=>t.seat===s&&orders(t)))txt+=' (the soldier with the arrow walks backwards)';
   if(S.forced&&!S.over)txt+=` (next roll: ${S.forced})`;
   if(S.mystForce&&!S.over)txt+=` (test: ${S.mystForce==='good'?'supply drop':'retreat'})`;
   $('#turnText').textContent=txt;

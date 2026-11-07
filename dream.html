@@ -94,7 +94,7 @@ input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
         <button id="bSpeed" type="button">Speed 1x</button>
         <label for="soft"><input id="soft" type="checkbox" checked> Soft focus</label>
         <select id="tests" aria-label="Stage a test scene"><option value="">Test a scene…</option><option value="drop">Ceiling drop</option><option value="snooze">Snooze (sleepwalk)</option></select>
-        <button id="bLevels" type="button" onclick="location.href='index.html'">Levels</button><button id="bNew" type="button">New game</button>
+        <button id="bLevels" type="button" onclick="location.href=location.hostname.endsWith('github.io')?'./?r='+Date.now():'index.html'">Levels</button><button id="bNew" type="button">New game</button>
       </div>
     </div>
   </div>
